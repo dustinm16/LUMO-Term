@@ -1,0 +1,26 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "lumo-term"
+version = "0.1.0"
+description = "Terminal client for Proton LUMO+ AI assistant"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "MIT"
+dependencies = [
+    "playwright>=1.40",
+    "textual>=0.50",
+    "rich>=13",
+    "pydantic>=2",
+]
+
+[project.scripts]
+lumo = "lumo_term.cli:main"
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "ruff>=0.1",
+]
