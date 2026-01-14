@@ -110,7 +110,6 @@ Show the browser window for debugging.
 
 - Python 3.10+
 - Firefox browser
-- Xvfb (virtual display) - for headless operation
 - Active Proton account with LUMO+ access
 
 ## Installation

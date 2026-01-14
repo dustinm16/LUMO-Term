@@ -4,14 +4,12 @@ This module uses Selenium to automate Firefox with the user's existing
 profile, leveraging LUMO's built-in encryption without needing to
 reverse-engineer the crypto.
 
-Uses Xvfb (via PyVirtualDisplay) to run the browser on a virtual display,
-providing full browser functionality without a visible window.
+Uses Firefox's native headless mode for invisible operation while
+maintaining full browser functionality including IndexedDB access.
 """
 
 import asyncio
-import os
 import shutil
-import subprocess
 import tempfile
 import time
 from pathlib import Path
@@ -38,15 +36,12 @@ class LumoBrowser:
 
         Args:
             firefox_profile: Path to Firefox profile directory. If None, auto-detects.
-            headless: Run on virtual display (invisible) if True, visible window if False.
+            headless: Run in headless mode (invisible) if True, visible window if False.
         """
         self.firefox_profile = firefox_profile or self._find_firefox_profile()
         self.headless = headless
         self._driver: webdriver.Firefox | None = None
         self._temp_profile: Path | None = None
-        self._xvfb_process: subprocess.Popen | None = None
-        self._display_num: int | None = None
-        self._original_display: str | None = None
 
     @staticmethod
     def _find_firefox_profile() -> Path:
@@ -117,51 +112,11 @@ class LumoBrowser:
 
         return temp_dir
 
-    def _start_xvfb(self) -> int:
-        """Start Xvfb on an available display number."""
-        # Find an available display number
-        for display_num in range(99, 199):
-            lock_file = Path(f"/tmp/.X{display_num}-lock")
-            if not lock_file.exists():
-                break
-        else:
-            raise RuntimeError("Could not find available display number for Xvfb")
-
-        # Start Xvfb
-        self._xvfb_process = subprocess.Popen(
-            [
-                "Xvfb",
-                f":{display_num}",
-                "-screen", "0", "1280x720x24",
-                "-nolisten", "tcp",
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-
-        # Wait for Xvfb to start
-        time.sleep(0.5)
-
-        if self._xvfb_process.poll() is not None:
-            raise RuntimeError(f"Xvfb failed to start on display :{display_num}")
-
-        return display_num
-
     async def start(self, progress_callback: Callable[[str], None] | None = None) -> None:
         """Start the browser and navigate to LUMO."""
         def log(msg: str):
             if progress_callback:
                 progress_callback(msg)
-
-        # Store original display to restore later
-        self._original_display = os.environ.get("DISPLAY")
-
-        # Start virtual display if headless mode
-        if self.headless:
-            log("Starting virtual display...")
-            self._display_num = self._start_xvfb()
-            # Set DISPLAY for this process and all children
-            os.environ["DISPLAY"] = f":{self._display_num}"
 
         log("Copying profile...")
         self._temp_profile = self._copy_profile()
@@ -170,8 +125,9 @@ class LumoBrowser:
         options = Options()
         options.profile = str(self._temp_profile)
 
-        # Don't use Firefox's built-in headless - we use Xvfb instead
-        # This allows full browser functionality including IndexedDB
+        # Use Firefox's native headless mode
+        if self.headless:
+            options.add_argument('-headless')
 
         # Additional options for stability
         options.set_preference("browser.tabs.remote.autostart", False)
@@ -179,8 +135,6 @@ class LumoBrowser:
 
         log("Installing geckodriver...")
         driver_path = GeckoDriverManager().install()
-
-        # Create service - DISPLAY is already set in os.environ
         service = Service(executable_path=driver_path)
 
         log("Launching Firefox...")
@@ -218,23 +172,6 @@ class LumoBrowser:
         if self._driver:
             self._driver.quit()
             self._driver = None
-
-        # Stop Xvfb
-        if self._xvfb_process:
-            self._xvfb_process.terminate()
-            try:
-                self._xvfb_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._xvfb_process.kill()
-            self._xvfb_process = None
-
-        # Restore original display
-        if self._original_display:
-            os.environ["DISPLAY"] = self._original_display
-        elif "DISPLAY" in os.environ and self._display_num:
-            # Only remove if we set it
-            if os.environ.get("DISPLAY") == f":{self._display_num}":
-                del os.environ["DISPLAY"]
 
         # Clean up temp profile
         if self._temp_profile and self._temp_profile.parent.exists():

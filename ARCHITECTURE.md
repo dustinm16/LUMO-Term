@@ -17,12 +17,7 @@ This document explains the technical architecture of LUMO-Term.
 │                          │                                  │
 │              ┌───────────▼───────────┐                      │
 │              │   Selenium + Firefox  │                      │
-│              │   (on Virtual Display)│                      │
-│              └───────────┬───────────┘                      │
-│                          │                                  │
-│              ┌───────────▼───────────┐                      │
-│              │   Xvfb (Direct)       │                      │
-│              │   (Invisible Display) │                      │
+│              │   (Native Headless)   │                      │
 │              └───────────┬───────────┘                      │
 └──────────────────────────┼──────────────────────────────────┘
                            │
@@ -107,7 +102,7 @@ class LumoBrowser:
 
 Key implementation details:
 
-1. **Virtual Display**: Directly manages Xvfb subprocess to render browser invisibly
+1. **Native Headless**: Uses Firefox's built-in `-headless` flag for invisible operation
 2. **Profile Copying**: Copies essential Firefox profile files (cookies, Proton storage) to temp directory
 3. **GeckoDriver**: Uses webdriver-manager to auto-download appropriate geckodriver
 4. **DOM Polling**: Monitors response elements for streaming text updates
@@ -292,10 +287,9 @@ lumo --profile ~/.mozilla/firefox/xyz.lumo-dedicated
 ### Known Limitations
 
 1. **Browser Dependency**: Requires Firefox to be installed
-2. **Xvfb Dependency**: Requires Xvfb for headless operation on Linux
-3. **DOM Selectors**: May break if LUMO updates its UI structure
-4. **No Offline Mode**: Requires active internet connection
-5. **Single Session**: One conversation at a time
+2. **DOM Selectors**: May break if LUMO updates its UI structure
+3. **No Offline Mode**: Requires active internet connection
+4. **Single Session**: One conversation at a time
 
 ## Contributing
 

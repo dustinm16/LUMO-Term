@@ -40,22 +40,7 @@ sudo apt install firefox
 sudo dnf install firefox
 ```
 
-### 3. Xvfb (Virtual Display)
-
-LUMO-Term uses Xvfb to run Firefox on a virtual display (invisible to user):
-
-```bash
-# Arch Linux
-sudo pacman -S xorg-server-xvfb
-
-# Ubuntu/Debian
-sudo apt install xvfb
-
-# Fedora
-sudo dnf install xorg-x11-server-Xvfb
-```
-
-### 4. LUMO+ Access
+### 3. LUMO+ Access
 
 You need an active Proton account with LUMO+ access:
 
@@ -199,22 +184,6 @@ Or set it in `~/.config/lumo-term/config.json`:
 # Install Firefox
 sudo pacman -S firefox  # Arch
 sudo apt install firefox  # Ubuntu/Debian
-```
-
-### "Xvfb not found" or display errors
-
-**Problem**: Virtual display (Xvfb) is not installed.
-
-**Solution**:
-```bash
-# Arch Linux
-sudo pacman -S xorg-server-xvfb
-
-# Ubuntu/Debian
-sudo apt install xvfb
-
-# Fedora
-sudo dnf install xorg-x11-server-Xvfb
 ```
 
 ### Slow startup
