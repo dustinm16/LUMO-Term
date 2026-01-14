@@ -21,7 +21,7 @@ This document explains the technical architecture of LUMO-Term.
 │              └───────────┬───────────┘                      │
 │                          │                                  │
 │              ┌───────────▼───────────┐                      │
-│              │   Xvfb (PyVirtualDisp)│                      │
+│              │   Xvfb (Direct)       │                      │
 │              │   (Invisible Display) │                      │
 │              └───────────┬───────────┘                      │
 └──────────────────────────┼──────────────────────────────────┘
@@ -107,7 +107,7 @@ class LumoBrowser:
 
 Key implementation details:
 
-1. **Virtual Display**: Uses PyVirtualDisplay (Xvfb) to render browser invisibly
+1. **Virtual Display**: Directly manages Xvfb subprocess to render browser invisibly
 2. **Profile Copying**: Copies essential Firefox profile files (cookies, Proton storage) to temp directory
 3. **GeckoDriver**: Uses webdriver-manager to auto-download appropriate geckodriver
 4. **DOM Polling**: Monitors response elements for streaming text updates

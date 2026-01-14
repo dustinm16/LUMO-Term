@@ -115,7 +115,7 @@ git clone https://github.com/dustinm16/LUMO-Term.git
 cd LUMO-Term
 
 # Install dependencies
-pip install selenium webdriver-manager PyVirtualDisplay textual rich pydantic
+pip install selenium webdriver-manager textual rich pydantic
 
 # Run directly (geckodriver auto-downloaded)
 python -m lumo_term
