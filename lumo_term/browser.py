@@ -157,11 +157,13 @@ class LumoBrowser:
         """Wait for LUMO to be fully loaded and ready."""
         try:
             wait = WebDriverWait(self._driver, timeout)
-            # Wait for any input element to be present
+            # Wait for TipTap/ProseMirror editor to appear
             wait.until(EC.presence_of_element_located((
                 By.CSS_SELECTOR,
-                'textarea, div[contenteditable="true"], [data-testid="composer-input"], input[type="text"]'
+                'div.tiptap.ProseMirror, div[contenteditable="true"]'
             )))
+            # Give UI a moment to stabilize
+            await asyncio.sleep(2)
         except TimeoutException:
             current_url = self._driver.current_url
             if "account.proton.me" in current_url or "login" in current_url.lower():
@@ -187,20 +189,27 @@ class LumoBrowser:
             shutil.rmtree(self._temp_profile.parent, ignore_errors=True)
 
     def _find_input_element(self):
-        """Find the message input element."""
+        """Find the message input element (TipTap/ProseMirror editor)."""
         selectors = [
-            'textarea',
+            'div.tiptap.ProseMirror',  # LUMO's TipTap editor
+            'div[contenteditable="true"].composer',
             'div[contenteditable="true"]',
+            'textarea',
             '[data-testid="composer-input"]',
-            'input[type="text"]',
         ]
 
         for selector in selectors:
             try:
                 elements = self._driver.find_elements(By.CSS_SELECTOR, selector)
                 for elem in elements:
-                    if elem.is_displayed() and elem.is_enabled():
-                        return elem
+                    if elem.is_displayed():
+                        # For contenteditable divs, check if it looks like a composer
+                        classes = elem.get_attribute("class") or ""
+                        if "composer" in classes or "ProseMirror" in classes or elem.tag_name == "textarea":
+                            return elem
+                        # Fallback: return first visible contenteditable
+                        if elem.get_attribute("contenteditable") == "true":
+                            return elem
             except NoSuchElementException:
                 continue
 
@@ -243,20 +252,26 @@ class LumoBrowser:
         if not self._driver:
             raise RuntimeError("Browser not started. Call start() first.")
 
-        # Find and fill the input
+        # Find the input element (TipTap editor)
         input_elem = self._find_input_element()
-        input_elem.clear()
-        input_elem.send_keys(message)
 
-        # Small delay to let the input register
+        # Click to focus
+        input_elem.click()
         await asyncio.sleep(0.2)
 
-        # Click send button or press Enter
-        send_button = self._find_send_button()
-        if send_button:
-            send_button.click()
-        else:
-            input_elem.send_keys(Keys.RETURN)
+        # Clear any existing content and type the message
+        # For TipTap, select all and delete first
+        from selenium.webdriver.common.action_chains import ActionChains
+        actions = ActionChains(self._driver)
+        actions.key_down(Keys.CONTROL).send_keys('a').key_up(Keys.CONTROL).perform()
+        await asyncio.sleep(0.1)
+
+        # Type the message directly
+        input_elem.send_keys(message)
+        await asyncio.sleep(0.3)
+
+        # Press Enter to send
+        input_elem.send_keys(Keys.RETURN)
 
         # Poll for response
         last_text = ""
@@ -300,19 +315,27 @@ class LumoBrowser:
     def _get_latest_response(self) -> str:
         """Get the latest assistant response text."""
         selectors = [
+            '.progressive-markdown-content',  # LUMO's actual response content
+            '.lumo-markdown',
             '[data-testid="message-content"]',
             '.message-content',
-            '.assistant-message',
-            '[data-role="assistant"]',
-            'div[class*="message"]',
         ]
 
         for selector in selectors:
             try:
                 elements = self._driver.find_elements(By.CSS_SELECTOR, selector)
-                if elements:
-                    # Get the last (most recent) message
-                    return elements[-1].text
+                # Filter to get only assistant responses (skip user messages)
+                for elem in reversed(elements):
+                    text = elem.text
+                    if text:
+                        # Check parent for assistant indicator
+                        try:
+                            parent_html = elem.find_element(By.XPATH, "../..").get_attribute("outerHTML")[:200]
+                            # User messages have 'user-msg' class
+                            if "user-msg" not in parent_html:
+                                return text
+                        except Exception:
+                            return text
             except Exception:
                 continue
 
