@@ -15,11 +15,12 @@ A terminal client for [Proton LUMO+](https://lumo.proton.me) AI assistant, bring
 
 ## How It Works
 
-LUMO+ uses end-to-end encryption for all messages. Rather than reverse-engineering Proton's encryption protocol, LUMO-Term uses [Playwright](https://playwright.dev/) to automate a headless Firefox browser with your existing profile. This approach:
+LUMO+ uses end-to-end encryption for all messages. Rather than reverse-engineering Proton's encryption protocol, LUMO-Term uses [Selenium](https://www.selenium.dev/) to automate Firefox running on a virtual display (Xvfb). This approach:
 
 - Leverages LUMO's built-in encryption seamlessly
 - Keeps your credentials secure in Firefox's profile
 - Works with any future LUMO updates automatically
+- Runs invisibly on a virtual display (no visible browser window)
 
 ## Quick Start
 
@@ -109,6 +110,7 @@ Show the browser window for debugging.
 
 - Python 3.10+
 - Firefox browser
+- Xvfb (virtual display) - for headless operation
 - Active Proton account with LUMO+ access
 
 ## Installation

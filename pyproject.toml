@@ -12,6 +12,7 @@ license = "MIT"
 dependencies = [
     "selenium>=4.15",
     "webdriver-manager>=4.0",
+    "PyVirtualDisplay>=3.0",
     "textual>=0.50",
     "rich>=13",
     "pydantic>=2",

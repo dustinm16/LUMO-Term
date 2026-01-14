@@ -3,6 +3,9 @@
 This module uses Selenium to automate Firefox with the user's existing
 profile, leveraging LUMO's built-in encryption without needing to
 reverse-engineer the crypto.
+
+Uses Xvfb (via PyVirtualDisplay) to run the browser on a virtual display,
+providing full browser functionality without a visible window.
 """
 
 import asyncio
@@ -12,6 +15,7 @@ import time
 from pathlib import Path
 from typing import Callable
 
+from pyvirtualdisplay import Display
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -33,12 +37,13 @@ class LumoBrowser:
 
         Args:
             firefox_profile: Path to Firefox profile directory. If None, auto-detects.
-            headless: Run browser in headless mode (no visible window).
+            headless: Run on virtual display (invisible) if True, visible window if False.
         """
         self.firefox_profile = firefox_profile or self._find_firefox_profile()
         self.headless = headless
         self._driver: webdriver.Firefox | None = None
         self._temp_profile: Path | None = None
+        self._display: Display | None = None
 
     @staticmethod
     def _find_firefox_profile() -> Path:
@@ -115,6 +120,12 @@ class LumoBrowser:
             if progress_callback:
                 progress_callback(msg)
 
+        # Start virtual display if headless mode
+        if self.headless:
+            log("Starting virtual display...")
+            self._display = Display(visible=False, size=(1280, 720))
+            self._display.start()
+
         log("Copying profile...")
         self._temp_profile = self._copy_profile()
 
@@ -122,8 +133,8 @@ class LumoBrowser:
         options = Options()
         options.profile = str(self._temp_profile)
 
-        if self.headless:
-            options.add_argument("-headless")
+        # Don't use Firefox's built-in headless - we use Xvfb instead
+        # This allows full browser functionality including IndexedDB
 
         # Additional options for stability
         options.set_preference("browser.tabs.remote.autostart", False)
@@ -165,6 +176,11 @@ class LumoBrowser:
         if self._driver:
             self._driver.quit()
             self._driver = None
+
+        # Stop virtual display
+        if self._display:
+            self._display.stop()
+            self._display = None
 
         # Clean up temp profile
         if self._temp_profile and self._temp_profile.parent.exists():

@@ -40,7 +40,22 @@ sudo apt install firefox
 sudo dnf install firefox
 ```
 
-### 3. LUMO+ Access
+### 3. Xvfb (Virtual Display)
+
+LUMO-Term uses Xvfb to run Firefox on a virtual display (invisible to user):
+
+```bash
+# Arch Linux
+sudo pacman -S xorg-server-xvfb
+
+# Ubuntu/Debian
+sudo apt install xvfb
+
+# Fedora
+sudo dnf install xorg-x11-server-Xvfb
+```
+
+### 4. LUMO+ Access
 
 You need an active Proton account with LUMO+ access:
 
@@ -69,7 +84,7 @@ source venv/bin/activate  # Linux/macOS
 # Install the package (includes all dependencies)
 pip install -e .
 
-# geckodriver will be auto-downloaded on first run
+# geckodriver will be auto-downloaded on first run via webdriver-manager
 ```
 
 > **Important**: You must activate the virtual environment every time you open a new terminal session before using `lumo`:
@@ -89,9 +104,7 @@ cd LUMO-Term
 # Install with pip
 pip install --user -e .
 
-# Install Playwright
-pip install --user playwright
-playwright install firefox
+# geckodriver will be auto-downloaded on first run
 ```
 
 ### Option C: Run directly without installing
@@ -102,10 +115,9 @@ git clone https://github.com/dustinm16/LUMO-Term.git
 cd LUMO-Term
 
 # Install dependencies
-pip install playwright textual rich pydantic
-playwright install firefox
+pip install selenium webdriver-manager PyVirtualDisplay textual rich pydantic
 
-# Run directly
+# Run directly (geckodriver auto-downloaded)
 python -m lumo_term
 ```
 
@@ -189,20 +201,27 @@ sudo pacman -S firefox  # Arch
 sudo apt install firefox  # Ubuntu/Debian
 ```
 
-### "Playwright browser not installed"
+### "Xvfb not found" or display errors
 
-**Problem**: Playwright's Firefox binary is missing.
+**Problem**: Virtual display (Xvfb) is not installed.
 
 **Solution**:
 ```bash
-playwright install firefox
+# Arch Linux
+sudo pacman -S xorg-server-xvfb
+
+# Ubuntu/Debian
+sudo apt install xvfb
+
+# Fedora
+sudo dnf install xorg-x11-server-Xvfb
 ```
 
 ### Slow startup
 
 **Problem**: Browser takes a long time to start.
 
-**Solution**: This is normal for the first run as Playwright initializes. Subsequent runs should be faster. You can also try:
+**Solution**: This is normal for the first run as geckodriver is downloaded. Subsequent runs should be faster. You can also try:
 
 ```bash
 # Pre-warm the browser
@@ -236,6 +255,9 @@ pip uninstall lumo-term
 # Remove configuration
 rm -rf ~/.config/lumo-term
 
-# Remove Playwright browsers (optional)
-playwright uninstall firefox
+# Remove cached profile data
+rm -rf ~/.cache/lumo-term
+
+# Remove cached geckodriver (optional)
+rm -rf ~/.wdm
 ```

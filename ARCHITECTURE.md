@@ -16,8 +16,13 @@ This document explains the technical architecture of LUMO-Term.
 │       └──────────────┴──────────────────────┘               │
 │                          │                                  │
 │              ┌───────────▼───────────┐                      │
-│              │   Playwright/Firefox  │                      │
-│              │   (Headless Browser)  │                      │
+│              │   Selenium + Firefox  │                      │
+│              │   (on Virtual Display)│                      │
+│              └───────────┬───────────┘                      │
+│                          │                                  │
+│              ┌───────────▼───────────┐                      │
+│              │   Xvfb (PyVirtualDisp)│                      │
+│              │   (Invisible Display) │                      │
 │              └───────────┬───────────┘                      │
 └──────────────────────────┼──────────────────────────────────┘
                            │
@@ -56,15 +61,17 @@ Each message is encrypted client-side before being sent, and responses are encry
 
 Instead of reverse-engineering Proton's encryption:
 
-1. We use **Playwright** to control Firefox
-2. Firefox loads LUMO's **web app with all crypto**
-3. We interact via **DOM manipulation**
-4. The browser handles **all encryption/decryption**
+1. We use **Selenium** to control Firefox
+2. Firefox runs on a **virtual display (Xvfb)** - invisible to the user
+3. Firefox loads LUMO's **web app with all crypto**
+4. We interact via **DOM manipulation**
+5. The browser handles **all encryption/decryption**
 
 This approach:
 - Works without understanding the crypto protocol
 - Stays compatible with LUMO updates
 - Keeps credentials secure in Firefox's storage
+- Runs invisibly via Xvfb virtual display
 
 ## Module Structure
 
@@ -81,25 +88,29 @@ lumo_term/
 
 ### browser.py - Core Engine
 
-The `LumoBrowser` class manages the headless Firefox instance:
+The `LumoBrowser` class manages Firefox via Selenium on a virtual display:
 
 ```python
 class LumoBrowser:
-    async def start(self):
-        """Launch Firefox with user's profile"""
+    async def start(self, progress_callback=None):
+        """Launch virtual display and Firefox with user's profile"""
 
     async def send_message(self, message, on_token=None):
         """Send message and stream response"""
 
     async def new_conversation(self):
         """Start fresh conversation"""
+
+    async def stop(self):
+        """Close browser and stop virtual display"""
 ```
 
 Key implementation details:
 
-1. **Profile Reuse**: Uses `launch_persistent_context()` with the user's Firefox profile
-2. **DOM Injection**: Injects JavaScript to capture streaming responses
-3. **Polling**: Monitors for response completion via DOM changes
+1. **Virtual Display**: Uses PyVirtualDisplay (Xvfb) to render browser invisibly
+2. **Profile Copying**: Copies essential Firefox profile files (cookies, Proton storage) to temp directory
+3. **GeckoDriver**: Uses webdriver-manager to auto-download appropriate geckodriver
+4. **DOM Polling**: Monitors response elements for streaming text updates
 
 ### cli.py - REPL Interface
 
@@ -175,13 +186,13 @@ Storage locations:
 2. cli.py/ui.py calls browser.send_message()
            │
            ▼
-3. browser.py fills input field via Playwright
+3. browser.py fills input field via Selenium WebDriver
            │
            ▼
 4. browser.py clicks send / presses Enter
            │
            ▼
-5. LUMO web app encrypts message (in browser)
+5. LUMO web app encrypts message (in browser on Xvfb)
            │
            ▼
 6. Encrypted message sent to lumo.proton.me
@@ -190,10 +201,10 @@ Storage locations:
 7. Encrypted response streamed back
            │
            ▼
-8. LUMO web app decrypts tokens (in browser)
+8. LUMO web app decrypts tokens (in browser on Xvfb)
            │
            ▼
-9. browser.py captures decrypted text via DOM
+9. browser.py captures decrypted text via DOM polling
            │
            ▼
 10. Text streamed to CLI/TUI via on_token callback
@@ -201,21 +212,26 @@ Storage locations:
 
 ### Response Capture
 
-The browser module injects JavaScript to capture streaming responses:
+The browser module uses Selenium to poll DOM elements for streaming responses:
 
-```javascript
-// Injected observer
-const observer = new MutationObserver((mutations) => {
-    const responseArea = document.querySelector('.assistant-message');
-    if (responseArea) {
-        window.__lumoResponse = responseArea.innerText;
-    }
-});
-observer.observe(document.body, { childList: true, subtree: true });
+```python
+def _get_latest_response(self) -> str:
+    """Get the latest assistant response text via CSS selectors."""
+    selectors = [
+        '[data-testid="message-content"]',
+        '.message-content',
+        '.assistant-message',
+        '[data-role="assistant"]',
+    ]
+    for selector in selectors:
+        elements = self._driver.find_elements(By.CSS_SELECTOR, selector)
+        if elements:
+            return elements[-1].text  # Get most recent message
+    return ""
 ```
 
-Python polls `window.__lumoResponse` and detects completion by:
-1. Text stability (no changes for 1.5 seconds)
+Python detects response completion by:
+1. Text stability (no changes for ~2 seconds)
 2. Absence of "Stop generating" button
 
 ## Security Considerations
@@ -248,18 +264,19 @@ lumo --profile ~/.mozilla/firefox/xyz.lumo-dedicated
 
 ### Startup Time
 
-- First run: ~3-5 seconds (Playwright initialization)
-- Subsequent: ~1-2 seconds (browser launch)
+- First run: ~5-10 seconds (geckodriver download + virtual display init)
+- Subsequent: ~3-5 seconds (browser launch on virtual display)
 - Page load: ~2-3 seconds (LUMO app initialization)
 
 ### Response Latency
 
 - Additional overhead: ~200-500ms vs native API
-- Streaming works, but with slight delay from DOM polling
+- Streaming works, with polling interval of ~300ms
 
 ### Memory Usage
 
-- Headless Firefox: ~200-400MB RAM
+- Firefox on Xvfb: ~200-400MB RAM
+- Xvfb virtual display: ~10-20MB RAM
 - Python process: ~50-100MB RAM
 
 ## Future Improvements
@@ -275,9 +292,10 @@ lumo --profile ~/.mozilla/firefox/xyz.lumo-dedicated
 ### Known Limitations
 
 1. **Browser Dependency**: Requires Firefox to be installed
-2. **DOM Selectors**: May break if LUMO updates its UI structure
-3. **No Offline Mode**: Requires active internet connection
-4. **Single Session**: One conversation at a time
+2. **Xvfb Dependency**: Requires Xvfb for headless operation on Linux
+3. **DOM Selectors**: May break if LUMO updates its UI structure
+4. **No Offline Mode**: Requires active internet connection
+5. **Single Session**: One conversation at a time
 
 ## Contributing
 
