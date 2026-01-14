@@ -1,20 +1,30 @@
-"""Headless browser automation for LUMO+ interaction.
+"""Browser automation for LUMO+ interaction using Selenium.
 
-This module uses Playwright to automate Firefox with the user's existing
+This module uses Selenium to automate Firefox with the user's existing
 profile, leveraging LUMO's built-in encryption without needing to
 reverse-engineer the crypto.
 """
 
 import asyncio
-import json
+import shutil
+import tempfile
+import time
 from pathlib import Path
-from typing import AsyncGenerator, Callable
+from typing import Callable
 
-from playwright.async_api import async_playwright, Page, Browser, BrowserContext
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.firefox.service import Service
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, NoSuchElementException
+from webdriver_manager.firefox import GeckoDriverManager
 
 
 class LumoBrowser:
-    """Headless browser client for LUMO+ AI assistant."""
+    """Browser client for LUMO+ AI assistant using Selenium."""
 
     LUMO_URL = "https://lumo.proton.me"
 
@@ -27,10 +37,8 @@ class LumoBrowser:
         """
         self.firefox_profile = firefox_profile or self._find_firefox_profile()
         self.headless = headless
-        self._playwright = None
-        self._browser: Browser | None = None
-        self._context: BrowserContext | None = None
-        self._page: Page | None = None
+        self._driver: webdriver.Firefox | None = None
+        self._temp_profile: Path | None = None
 
     @staticmethod
     def _find_firefox_profile() -> Path:
@@ -51,50 +59,156 @@ class LumoBrowser:
         profiles.sort(key=lambda p: (p / "cookies.sqlite").stat().st_mtime, reverse=True)
         return profiles[0]
 
-    async def start(self) -> None:
+    def _copy_profile(self) -> Path:
+        """Copy essential Firefox profile files to temp directory."""
+        # Use home directory instead of /tmp to avoid space issues
+        temp_base = Path.home() / ".cache" / "lumo-term"
+        temp_base.mkdir(parents=True, exist_ok=True)
+
+        # Clean old temp profiles
+        for old_profile in temp_base.glob("profile-*"):
+            try:
+                shutil.rmtree(old_profile, ignore_errors=True)
+            except Exception:
+                pass
+
+        temp_dir = Path(tempfile.mkdtemp(prefix="profile-", dir=temp_base))
+
+        # Essential files for authentication
+        essential_files = [
+            "cookies.sqlite",
+            "cookies.sqlite-wal",
+            "cookies.sqlite-shm",
+            "prefs.js",
+        ]
+
+        # Copy essential files
+        for filename in essential_files:
+            src = self.firefox_profile / filename
+            if src.exists():
+                try:
+                    shutil.copy2(src, temp_dir / filename)
+                except (OSError, shutil.Error):
+                    continue
+
+        # Only copy proton.me storage (not all extensions)
+        storage_src = self.firefox_profile / "storage" / "default"
+        if storage_src.exists():
+            storage_dest = temp_dir / "storage" / "default"
+            storage_dest.mkdir(parents=True, exist_ok=True)
+
+            for item in storage_src.iterdir():
+                if "proton" in item.name.lower() or "lumo" in item.name.lower():
+                    try:
+                        if item.is_dir():
+                            shutil.copytree(item, storage_dest / item.name,
+                                          dirs_exist_ok=True,
+                                          ignore_dangling_symlinks=True)
+                    except (OSError, shutil.Error):
+                        continue
+
+        return temp_dir
+
+    async def start(self, progress_callback: Callable[[str], None] | None = None) -> None:
         """Start the browser and navigate to LUMO."""
-        self._playwright = await async_playwright().start()
+        def log(msg: str):
+            if progress_callback:
+                progress_callback(msg)
 
-        # Launch Firefox with persistent context (uses profile's storage)
-        self._context = await self._playwright.firefox.launch_persistent_context(
-            user_data_dir=str(self.firefox_profile),
-            headless=self.headless,
-            viewport={"width": 1280, "height": 720},
-            # Avoid modifying the original profile
-            args=["--no-remote"],
-        )
+        log("Copying profile...")
+        self._temp_profile = self._copy_profile()
 
-        self._page = self._context.pages[0] if self._context.pages else await self._context.new_page()
+        log("Configuring Firefox...")
+        options = Options()
+        options.profile = str(self._temp_profile)
 
-        # Navigate to LUMO
-        await self._page.goto(self.LUMO_URL, wait_until="networkidle")
+        if self.headless:
+            options.add_argument("-headless")
 
-        # Wait for the app to be ready
+        # Additional options for stability
+        options.set_preference("browser.tabs.remote.autostart", False)
+        options.set_preference("browser.tabs.remote.autostart.2", False)
+
+        log("Installing geckodriver...")
+        service = Service(GeckoDriverManager().install())
+
+        log("Launching Firefox...")
+        self._driver = webdriver.Firefox(service=service, options=options)
+        self._driver.set_window_size(1280, 720)
+
+        log("Navigating to LUMO...")
+        self._driver.get(self.LUMO_URL)
+
+        log("Waiting for LUMO to load...")
         await self._wait_for_lumo_ready()
 
-    async def _wait_for_lumo_ready(self, timeout: float = 30.0) -> None:
+    async def _wait_for_lumo_ready(self, timeout: float = 60.0) -> None:
         """Wait for LUMO to be fully loaded and ready."""
-        # Wait for the main input to be visible
         try:
-            await self._page.wait_for_selector(
-                'textarea[placeholder*="Ask"], div[contenteditable="true"]',
-                timeout=timeout * 1000
-            )
-        except Exception:
-            # Check if we need to log in
-            if "account.proton.me" in self._page.url:
+            wait = WebDriverWait(self._driver, timeout)
+            # Wait for any input element to be present
+            wait.until(EC.presence_of_element_located((
+                By.CSS_SELECTOR,
+                'textarea, div[contenteditable="true"], [data-testid="composer-input"], input[type="text"]'
+            )))
+        except TimeoutException:
+            current_url = self._driver.current_url
+            if "account.proton.me" in current_url or "login" in current_url.lower():
                 raise RuntimeError(
                     "Not logged in to Proton. Please log in to LUMO+ in Firefox first: "
                     f"{self.LUMO_URL}"
                 )
-            raise RuntimeError(f"LUMO failed to load. Current URL: {self._page.url}")
+            raise RuntimeError(f"LUMO failed to load (timeout). Current URL: {current_url}")
 
     async def stop(self) -> None:
-        """Close the browser."""
-        if self._context:
-            await self._context.close()
-        if self._playwright:
-            await self._playwright.stop()
+        """Close the browser and clean up."""
+        if self._driver:
+            self._driver.quit()
+            self._driver = None
+
+        # Clean up temp profile
+        if self._temp_profile and self._temp_profile.parent.exists():
+            shutil.rmtree(self._temp_profile.parent, ignore_errors=True)
+
+    def _find_input_element(self):
+        """Find the message input element."""
+        selectors = [
+            'textarea',
+            'div[contenteditable="true"]',
+            '[data-testid="composer-input"]',
+            'input[type="text"]',
+        ]
+
+        for selector in selectors:
+            try:
+                elements = self._driver.find_elements(By.CSS_SELECTOR, selector)
+                for elem in elements:
+                    if elem.is_displayed() and elem.is_enabled():
+                        return elem
+            except NoSuchElementException:
+                continue
+
+        raise RuntimeError("Could not find message input element")
+
+    def _find_send_button(self):
+        """Find the send button."""
+        selectors = [
+            'button[type="submit"]',
+            'button[aria-label*="Send"]',
+            'button[aria-label*="send"]',
+            'button:has(svg)',  # Often the send button has an icon
+        ]
+
+        for selector in selectors:
+            try:
+                elements = self._driver.find_elements(By.CSS_SELECTOR, selector)
+                for elem in elements:
+                    if elem.is_displayed() and elem.is_enabled():
+                        return elem
+            except NoSuchElementException:
+                continue
+
+        return None  # Will use Enter key instead
 
     async def send_message(
         self,
@@ -110,51 +224,38 @@ class LumoBrowser:
         Returns:
             The complete response text.
         """
-        if not self._page:
+        if not self._driver:
             raise RuntimeError("Browser not started. Call start() first.")
 
         # Find and fill the input
-        input_selector = 'textarea[placeholder*="Ask"], div[contenteditable="true"]'
-        await self._page.fill(input_selector, message)
+        input_elem = self._find_input_element()
+        input_elem.clear()
+        input_elem.send_keys(message)
 
-        # Set up response capture before sending
-        response_text = ""
-        response_complete = asyncio.Event()
-
-        # Inject script to capture streaming response
-        await self._page.evaluate("""
-            window.__lumoResponse = '';
-            window.__lumoComplete = false;
-
-            // Hook into the response display area
-            const observer = new MutationObserver((mutations) => {
-                const responseArea = document.querySelector('[data-testid="message-content"], .message-content, .assistant-message');
-                if (responseArea) {
-                    window.__lumoResponse = responseArea.innerText || responseArea.textContent;
-                }
-            });
-
-            observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-            window.__lumoObserver = observer;
-        """)
+        # Small delay to let the input register
+        await asyncio.sleep(0.2)
 
         # Click send button or press Enter
-        send_button = await self._page.query_selector('button[type="submit"], button[aria-label*="Send"]')
+        send_button = self._find_send_button()
         if send_button:
-            await send_button.click()
+            send_button.click()
         else:
-            await self._page.keyboard.press("Enter")
+            input_elem.send_keys(Keys.RETURN)
 
-        # Poll for response completion
+        # Poll for response
         last_text = ""
         stable_count = 0
         max_wait = 120  # 2 minutes max
-        poll_interval = 0.2
+        poll_interval = 0.3
+
+        # Wait a moment for response to start
+        await asyncio.sleep(1.0)
 
         for _ in range(int(max_wait / poll_interval)):
             await asyncio.sleep(poll_interval)
 
-            current_text = await self._page.evaluate("window.__lumoResponse")
+            # Try to find the latest response
+            current_text = self._get_latest_response()
 
             if current_text and current_text != last_text:
                 # New content
@@ -165,57 +266,69 @@ class LumoBrowser:
                 stable_count = 0
             elif current_text:
                 stable_count += 1
-                # Consider complete after 1.5 seconds of stability
-                if stable_count > 7:
+                # Consider complete after 2 seconds of stability
+                if stable_count > 6:
                     break
 
-            # Check if there's a "stop generating" button (indicates still streaming)
-            stop_button = await self._page.query_selector('button[aria-label*="Stop"], button:has-text("Stop")')
-            if not stop_button and current_text:
-                stable_count += 2  # Speed up completion detection
-
-        # Cleanup observer
-        await self._page.evaluate("""
-            if (window.__lumoObserver) {
-                window.__lumoObserver.disconnect();
-            }
-        """)
+            # Check if there's a "stop generating" button
+            try:
+                stop_btns = self._driver.find_elements(By.CSS_SELECTOR,
+                    'button[aria-label*="Stop"], button:contains("Stop")')
+                if not stop_btns and current_text:
+                    stable_count += 1
+            except Exception:
+                pass
 
         return last_text
 
+    def _get_latest_response(self) -> str:
+        """Get the latest assistant response text."""
+        selectors = [
+            '[data-testid="message-content"]',
+            '.message-content',
+            '.assistant-message',
+            '[data-role="assistant"]',
+            'div[class*="message"]',
+        ]
+
+        for selector in selectors:
+            try:
+                elements = self._driver.find_elements(By.CSS_SELECTOR, selector)
+                if elements:
+                    # Get the last (most recent) message
+                    return elements[-1].text
+            except Exception:
+                continue
+
+        return ""
+
     async def new_conversation(self) -> None:
         """Start a new conversation."""
-        if not self._page:
+        if not self._driver:
             raise RuntimeError("Browser not started. Call start() first.")
 
         # Look for new chat button
-        new_chat = await self._page.query_selector(
-            'button[aria-label*="New"], a[href*="/new"], button:has-text("New chat")'
-        )
-        if new_chat:
-            await new_chat.click()
-            await self._wait_for_lumo_ready()
-        else:
-            # Fallback: navigate to base URL
-            await self._page.goto(self.LUMO_URL)
-            await self._wait_for_lumo_ready()
+        selectors = [
+            'button[aria-label*="New"]',
+            'a[href*="/new"]',
+            'button:contains("New chat")',
+            '[data-testid="new-conversation"]',
+        ]
 
-    async def get_conversations(self) -> list[dict]:
-        """Get list of recent conversations."""
-        if not self._page:
-            raise RuntimeError("Browser not started. Call start() first.")
+        for selector in selectors:
+            try:
+                elements = self._driver.find_elements(By.CSS_SELECTOR, selector)
+                for elem in elements:
+                    if elem.is_displayed():
+                        elem.click()
+                        await self._wait_for_lumo_ready()
+                        return
+            except Exception:
+                continue
 
-        # This would need to be adapted based on LUMO's actual DOM structure
-        conversations = await self._page.evaluate("""
-            () => {
-                const items = document.querySelectorAll('[data-testid="conversation-item"], .conversation-item');
-                return Array.from(items).map(item => ({
-                    title: item.textContent?.trim() || 'Untitled',
-                    href: item.querySelector('a')?.href || ''
-                }));
-            }
-        """)
-        return conversations
+        # Fallback: navigate to base URL
+        self._driver.get(self.LUMO_URL)
+        await self._wait_for_lumo_ready()
 
 
 async def create_lumo_client(

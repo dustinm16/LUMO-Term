@@ -69,15 +69,14 @@ source venv/bin/activate  # Linux/macOS
 # Install the package (includes all dependencies)
 pip install -e .
 
-# Install Playwright's Firefox browser
-playwright install firefox
+# geckodriver will be auto-downloaded on first run
 ```
 
 > **Important**: You must activate the virtual environment every time you open a new terminal session before using `lumo`:
 > ```bash
 > cd LUMO-Term
 > source venv/bin/activate
-> lumo
+> lumo --no-headless  # Use visible browser mode (recommended)
 > ```
 
 ### Option B: Install without virtual environment

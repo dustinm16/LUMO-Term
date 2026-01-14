@@ -10,7 +10,7 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from .browser import LumoBrowser, create_lumo_client
+from .browser import LumoBrowser
 from .config import load_config
 
 
@@ -131,11 +131,15 @@ async def async_main() -> int:
     # Initialize browser
     console.print("[dim]Starting browser...[/dim]")
 
+    def on_progress(msg: str):
+        console.print(f"[dim]  {msg}[/dim]")
+
     try:
-        client = await create_lumo_client(
+        client = LumoBrowser(
             firefox_profile=args.profile or (Path(config.firefox_profile) if config.firefox_profile else None),
             headless=not args.no_headless,
         )
+        await client.start(progress_callback=on_progress)
     except Exception as e:
         console.print(f"[red]Failed to start: {e}[/red]")
         return 1

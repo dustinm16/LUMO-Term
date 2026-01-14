@@ -10,7 +10,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "MIT"
 dependencies = [
-    "playwright>=1.40",
+    "selenium>=4.15",
+    "webdriver-manager>=4.0",
     "textual>=0.50",
     "rich>=13",
     "pydantic>=2",

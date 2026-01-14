@@ -35,16 +35,23 @@ source venv/bin/activate  # On Linux/macOS
 
 # Install lumo-term and dependencies
 pip install -e .
-playwright install firefox
 
 # Make sure you're logged into LUMO+ in Firefox first
 firefox https://lumo.proton.me
 
-# Run the terminal client
-lumo
+# Run the terminal client (visible browser mode recommended)
+lumo --no-headless
 ```
 
 > **Note**: Remember to activate the virtual environment (`source venv/bin/activate`) each time you open a new terminal before running `lumo`.
+
+## Current Status
+
+**Work in Progress**: LUMO+ uses end-to-end encryption with keys stored in browser IndexedDB. This makes headless automation challenging. Current recommended usage:
+
+- Use `--no-headless` flag to run with visible browser
+- The browser will use your Firefox session for authentication
+- Headless mode is experimental due to encryption key handling
 
 ## Usage
 
