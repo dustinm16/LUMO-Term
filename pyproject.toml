@@ -23,5 +23,18 @@ lumo = "lumo_term.cli:main"
 [project.optional-dependencies]
 dev = [
     "pytest>=8",
+    "pytest-asyncio>=0.23",
     "ruff>=0.1",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests that require network access",
+    "persistence: marks tests for conversation persistence",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
 ]
