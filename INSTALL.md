@@ -51,24 +51,34 @@ You need an active Proton account with LUMO+ access:
 
 ## Installation
 
-### Option A: Install with pip (Recommended)
+### Option A: Install with pip in Virtual Environment (Recommended)
 
 ```bash
 # Clone the repository
 git clone https://github.com/dustinm16/LUMO-Term.git
 cd LUMO-Term
 
-# Create virtual environment (recommended)
+# Create virtual environment
 python3 -m venv venv
-source venv/bin/activate
 
-# Install the package
+# Activate virtual environment
+source venv/bin/activate  # Linux/macOS
+# venv\Scripts\activate   # Windows (Command Prompt)
+# venv\Scripts\Activate.ps1  # Windows (PowerShell)
+
+# Install the package (includes all dependencies)
 pip install -e .
 
-# Install Playwright and Firefox browser
-pip install playwright
+# Install Playwright's Firefox browser
 playwright install firefox
 ```
+
+> **Important**: You must activate the virtual environment every time you open a new terminal session before using `lumo`:
+> ```bash
+> cd LUMO-Term
+> source venv/bin/activate
+> lumo
+> ```
 
 ### Option B: Install without virtual environment
 
@@ -213,6 +223,7 @@ To update LUMO-Term:
 
 ```bash
 cd LUMO-Term
+source venv/bin/activate  # Activate venv first
 git pull
 pip install -e .
 ```

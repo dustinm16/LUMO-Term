@@ -24,12 +24,18 @@ LUMO+ uses end-to-end encryption for all messages. Rather than reverse-engineeri
 ## Quick Start
 
 ```bash
-# Install dependencies
-pip install playwright
-playwright install firefox
+# Clone the repository
+git clone https://github.com/dustinm16/LUMO-Term.git
+cd LUMO-Term
 
-# Install lumo-term
+# Create and activate virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Linux/macOS
+# venv\Scripts\activate   # On Windows
+
+# Install lumo-term and dependencies
 pip install -e .
+playwright install firefox
 
 # Make sure you're logged into LUMO+ in Firefox first
 firefox https://lumo.proton.me
@@ -37,6 +43,8 @@ firefox https://lumo.proton.me
 # Run the terminal client
 lumo
 ```
+
+> **Note**: Remember to activate the virtual environment (`source venv/bin/activate`) each time you open a new terminal before running `lumo`.
 
 ## Usage
 
