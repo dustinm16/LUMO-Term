@@ -79,9 +79,53 @@ Interactive chat session with LUMO+. Type your message and press Enter.
 
 ```bash
 lumo -m "Explain quantum computing in simple terms"
+# Or use positional argument
+lumo "Explain quantum computing in simple terms"
 ```
 
 Send a single message and get the response.
+
+### Pipe Input
+
+```bash
+# Pipe file content
+cat script.py | lumo "Review this code"
+
+# Pipe command output
+git diff | lumo "Summarize these changes"
+
+# Redirect file
+lumo "Explain this error" < error.log
+```
+
+### File Context
+
+```bash
+# Include single file
+lumo -f main.py "Add error handling"
+
+# Include multiple files
+lumo -f src/*.py "Find bugs in these files"
+
+# Multiple -f flags
+lumo -f config.py -f utils.py "How do these interact?"
+```
+
+### Output Options
+
+```bash
+# Save response to file
+lumo -m "Write a Python script for X" -o script.py
+
+# Append to file
+lumo -m "Add more features" -o script.py --append
+
+# Copy response to clipboard
+lumo -m "Generate a command" --copy
+
+# Plain text output (no markdown formatting)
+lumo -m "List items" --plain
+```
 
 ### Full TUI
 
@@ -103,17 +147,25 @@ Show the browser window for debugging.
 
 | Option | Description |
 |--------|-------------|
+| `-m, --message TEXT` | Send single message and exit |
+| `-f, --file FILE` | Include file content (supports globs, repeatable) |
+| `-o, --output PATH` | Save response to file |
+| `--append` | Append to output file instead of overwriting |
+| `--copy` | Copy response to clipboard |
+| `--plain` | Output plain text (no markdown) |
 | `--tui` | Launch full TUI interface |
 | `--no-headless` | Show browser window |
 | `--profile PATH` | Use specific Firefox profile |
 | `--new` | Start a new conversation |
-| `-m, --message TEXT` | Send single message and exit |
 
 ### REPL Commands
 
 | Command | Description |
 |---------|-------------|
 | `/new` or `/n` | Start new conversation |
+| `/retry` or `/r` | Resend last message |
+| `/copy` or `/c` | Copy last response to clipboard |
+| `/save <file>` | Save last response to file |
 | `/quit` or `/q` | Exit |
 | `/help` or `/?` | Show help |
 

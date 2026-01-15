@@ -13,40 +13,40 @@ A prioritized list of potential enhancements to bring LUMO-Term closer to Claude
 | Session Persistence | ✅ Within session |
 | Security (injection safe) | ✅ 30 tests passing |
 | Logging Infrastructure | ✅ Basic |
+| Pipe/Stdin Support | ✅ Implemented |
+| File Context (`-f`) | ✅ Implemented |
+| Output to File (`-o`) | ✅ Implemented |
+| Clipboard (`--copy`) | ✅ Implemented |
+| Retry Command | ✅ Implemented |
+| Plain Text Mode | ✅ Implemented |
 
 ---
 
 ## High Priority
 
-### 1. Pipe/Stdin Support
+### 1. ~~Pipe/Stdin Support~~ ✅ DONE
 **Effort:** Low | **Impact:** High
 
-Allow piping file contents to LUMO:
+~~Allow piping file contents to LUMO:~~
 ```bash
 cat script.py | lumo "Review this code"
 lumo "Explain this" < error.log
 ```
 
-**Implementation:**
-- Check `sys.stdin.isatty()`
-- Read stdin and append to message
-- Handle binary vs text detection
+**Status:** Implemented in v0.1.0
 
 ---
 
-### 2. File Context (`-f` flag)
+### 2. ~~File Context (`-f` flag)~~ ✅ DONE
 **Effort:** Low | **Impact:** High
 
-Include file contents in prompt:
+~~Include file contents in prompt:~~
 ```bash
 lumo -f src/main.py "Add error handling to this"
 lumo -f *.py "Find bugs in these files"
 ```
 
-**Implementation:**
-- Add `-f/--file` argument (supports globs)
-- Read and concatenate file contents
-- Add file markers for context
+**Status:** Implemented in v0.1.0
 
 ---
 
@@ -67,19 +67,16 @@ lumo --load <id>         # Load specific conversation
 
 ---
 
-### 4. Output to File (`-o` flag)
+### 4. ~~Output to File (`-o` flag)~~ ✅ DONE
 **Effort:** Low | **Impact:** Medium
 
-Save responses directly to file:
+~~Save responses directly to file:~~
 ```bash
 lumo -m "Write a Python script for X" -o script.py
 lumo -m "Generate README" -o README.md
 ```
 
-**Implementation:**
-- Add `-o/--output` argument
-- Write response to file
-- Optional `--append` mode
+**Status:** Implemented in v0.1.0 (includes `--append` mode)
 
 ---
 
@@ -154,15 +151,17 @@ lumo -m "Code" --format code-only      # Just code blocks
 
 ---
 
-### 10. Retry/Regenerate
+### 10. ~~Retry/Regenerate~~ ✅ DONE
 **Effort:** Low | **Impact:** Medium
 
-REPL commands for retry:
+~~REPL commands for retry:~~
 ```
 /retry              # Resend last message
 /regen              # Regenerate last response
 /edit               # Edit and resend last message
 ```
+
+**Status:** `/retry` and `/r` implemented in v0.1.0
 
 ---
 
@@ -180,13 +179,15 @@ lumo --new-tab "Project A context"
 
 ---
 
-### 12. Clipboard Integration
+### 12. ~~Clipboard Integration~~ ✅ DONE
 **Effort:** Low | **Impact:** Low
 
 ```bash
 lumo --clipboard    # Use clipboard content as input
 lumo -m "X" --copy  # Copy response to clipboard
 ```
+
+**Status:** `--copy` and `/copy` implemented in v0.1.0. Input from clipboard not yet implemented.
 
 ---
 
@@ -295,12 +296,12 @@ lumo --speak         # TTS for responses
 
 ## Quick Wins (< 1 hour each)
 
-1. [ ] `-f` file flag
-2. [ ] Stdin pipe support
-3. [ ] `-o` output flag
-4. [ ] `--copy` clipboard output
-5. [ ] `/retry` command
-6. [ ] `--format plain` option
+1. [x] `-f` file flag ✅
+2. [x] Stdin pipe support ✅
+3. [x] `-o` output flag ✅
+4. [x] `--copy` clipboard output ✅
+5. [x] `/retry` command ✅
+6. [x] `--plain` option ✅
 7. [ ] Token count estimate display
 8. [ ] `--verbose` for debug output
 
@@ -308,14 +309,14 @@ lumo --speak         # TTS for responses
 
 ## Implementation Order Recommendation
 
-**Phase 1 - CLI Enhancements:**
-1. Pipe/stdin support
-2. File context flag
-3. Output to file
+**Phase 1 - CLI Enhancements:** ✅ COMPLETE
+1. ~~Pipe/stdin support~~ ✅
+2. ~~File context flag~~ ✅
+3. ~~Output to file~~ ✅
 
-**Phase 2 - REPL Improvements:**
-4. Retry/regenerate commands
-5. Conversation history
+**Phase 2 - REPL Improvements:** (In Progress)
+4. ~~Retry/regenerate commands~~ ✅
+5. Conversation history ← **NEXT**
 6. Better error messages
 
 **Phase 3 - TUI:**
