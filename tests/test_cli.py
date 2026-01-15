@@ -23,6 +23,8 @@ def make_mock_args(**kwargs):
         "tui": False,
         "plain": False,
         "prompt": None,
+        "code_only": False,
+        "language": None,
     }
     defaults.update(kwargs)
     return Namespace(**defaults)

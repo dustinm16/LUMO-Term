@@ -125,6 +125,12 @@ lumo -m "Generate a command" --copy
 
 # Plain text output (no markdown formatting)
 lumo -m "List items" --plain
+
+# Extract code only (strips "Here's the code:" etc.)
+lumo -m "Write a factorial function" --code-only -o factorial.py
+
+# Prefer specific language when extracting
+lumo -m "Write a script" --code-only --language python -o script.py
 ```
 
 ### Full TUI
@@ -153,6 +159,8 @@ Show the browser window for debugging.
 | `--append` | Append to output file instead of overwriting |
 | `--copy` | Copy response to clipboard |
 | `--plain` | Output plain text (no markdown) |
+| `--code-only` | Extract only code, strip conversational text |
+| `--language LANG` | Preferred language for code extraction |
 | `--tui` | Launch full TUI interface |
 | `--no-headless` | Show browser window |
 | `--profile PATH` | Use specific Firefox profile |

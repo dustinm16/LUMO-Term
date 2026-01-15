@@ -13,6 +13,7 @@ from rich.prompt import Prompt
 
 from .browser import LumoBrowser
 from .config import load_config
+from .extract import extract_code_for_file, strip_conversational_text
 
 
 console = Console()
@@ -86,6 +87,17 @@ def parse_args() -> argparse.Namespace:
         "--plain",
         action="store_true",
         help="Output plain text (no markdown formatting)",
+    )
+    parser.add_argument(
+        "--code-only",
+        action="store_true",
+        help="Extract only code blocks, strip conversational text",
+    )
+    parser.add_argument(
+        "--language",
+        type=str,
+        metavar="LANG",
+        help="Preferred language for code extraction (e.g., python, bash)",
     )
     parser.add_argument(
         "prompt",
@@ -338,27 +350,41 @@ async def run_single_message(client: LumoBrowser, message: str, args: argparse.N
     """Send a single message and return the response."""
     response = await client.send_message(message)
 
+    # Extract code only if requested
+    output_text = response
+    if getattr(args, "code_only", False):
+        language = getattr(args, "language", None)
+        extracted = extract_code_for_file(response, language=language)
+        if extracted:
+            output_text = extracted
+        else:
+            # Fall back to stripping conversational text
+            output_text = strip_conversational_text(response)
+
     # Display response
-    if args.plain:
-        console.print(response)
+    if getattr(args, "code_only", False) or args.plain:
+        # Code-only or plain mode: no markdown formatting
+        console.print(output_text)
     else:
         console.print(Markdown(response))
 
-    # Save to file if requested
+    # Save to file if requested (always save clean output when code-only)
     if args.output:
         try:
             mode = "a" if args.append else "w"
+            save_text = output_text if getattr(args, "code_only", False) else response
             with open(args.output, mode) as f:
-                f.write(response)
+                f.write(save_text)
                 if args.append:
                     f.write("\n")
             console.print(f"[dim]Response saved to {args.output}[/dim]")
         except Exception as e:
             console.print(f"[red]Could not save to {args.output}: {e}[/red]")
 
-    # Copy to clipboard if requested
+    # Copy to clipboard if requested (use clean output when code-only)
     if args.copy:
-        if copy_to_clipboard(response):
+        copy_text = output_text if getattr(args, "code_only", False) else response
+        if copy_to_clipboard(copy_text):
             console.print("[dim]Response copied to clipboard[/dim]")
         else:
             console.print("[yellow]Could not copy to clipboard (install xclip or xsel)[/yellow]")

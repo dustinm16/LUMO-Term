@@ -19,6 +19,8 @@ A prioritized list of potential enhancements to bring LUMO-Term closer to Claude
 | Clipboard (`--copy`) | ✅ Implemented |
 | Retry Command | ✅ Implemented |
 | Plain Text Mode | ✅ Implemented |
+| Code Block Extraction | ✅ Implemented |
+| Output Validation Tests | ✅ 22 tests |
 
 ---
 
@@ -96,19 +98,16 @@ Full terminal UI like Claude Code:
 
 ## Medium Priority
 
-### 6. Code Block Extraction
+### 6. ~~Code Block Extraction~~ ✅ DONE
 **Effort:** Low | **Impact:** Medium
 
-Extract and save code blocks from responses:
+~~Extract and save code blocks from responses:~~
 ```bash
-lumo -m "Write a bash script" --extract-code script.sh
-lumo -m "Create a class" --run-code  # Execute extracted code
+lumo -m "Write a bash script" --code-only -o script.sh
+lumo -m "Create a class" --code-only --language python
 ```
 
-**Implementation:**
-- Parse markdown code fences
-- Detect language from fence
-- Save with appropriate extension
+**Status:** Implemented in v0.1.0 with `--code-only` and `--language` flags.
 
 ---
 
