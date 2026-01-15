@@ -276,8 +276,17 @@ class LumoBrowser:
         actions.key_down(Keys.CONTROL).send_keys('a').key_up(Keys.CONTROL).perform()
         await asyncio.sleep(0.1)
 
-        # Type the message directly
-        input_elem.send_keys(message)
+        # Handle multi-line messages properly
+        # In TipTap, Enter sends the message, so we need Shift+Enter for newlines
+        lines = message.split('\n')
+        for i, line in enumerate(lines):
+            input_elem.send_keys(line)
+            if i < len(lines) - 1:
+                # Shift+Enter for newline within message
+                actions = ActionChains(self._driver)
+                actions.key_down(Keys.SHIFT).send_keys(Keys.RETURN).key_up(Keys.SHIFT).perform()
+                await asyncio.sleep(0.05)
+
         await asyncio.sleep(0.3)
 
         # Press Enter to send

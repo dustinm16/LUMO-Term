@@ -127,7 +127,7 @@ def extract_code_for_file(
     """Extract code suitable for saving to a file.
 
     Prioritizes code blocks matching the specified language.
-    Strips all conversational text.
+    Falls back to extracting inline code without fences.
 
     Args:
         text: The response text.
@@ -138,21 +138,26 @@ def extract_code_for_file(
     """
     blocks = extract_code_blocks(text)
 
-    if not blocks:
-        # Try to detect if the whole response is code
-        stripped = strip_conversational_text(text)
-        if stripped and _looks_like_code(stripped):
-            return stripped
-        return None
+    if blocks:
+        # If language specified, prefer matching blocks
+        if language:
+            for block in blocks:
+                if block["language"] == language.lower():
+                    return block["code"]
+        # Return first block
+        return blocks[0]["code"]
 
-    # If language specified, prefer matching blocks
-    if language:
-        for block in blocks:
-            if block["language"] == language.lower():
-                return block["code"]
+    # No code fences - try to extract inline code section
+    code_section = extract_code_section(text)
+    if code_section:
+        return code_section
 
-    # Return first block
-    return blocks[0]["code"]
+    # Last resort: check if stripped text looks like code
+    stripped = strip_conversational_text(text)
+    if stripped and _looks_like_code(stripped):
+        return stripped
+
+    return None
 
 
 def _looks_like_code(text: str) -> bool:
@@ -165,6 +170,92 @@ def _looks_like_code(text: str) -> bool:
         r"=\s*(?:function|\(.*?\)\s*=>)",  # JS functions
     ]
     return any(re.search(p, text, re.MULTILINE) for p in code_indicators)
+
+
+def extract_code_section(text: str) -> str | None:
+    """Extract code section from response without code fences.
+
+    Looks for patterns like function definitions and extracts
+    the code block even when not wrapped in markdown fences.
+
+    Args:
+        text: Response text that may contain inline code.
+
+    Returns:
+        Extracted code section, or None if no code found.
+    """
+    lines = text.split('\n')
+    code_lines = []
+    in_code = False
+    empty_line_count = 0
+
+    # Patterns that indicate we're leaving code
+    non_code_patterns = [
+        r'^what\s+(changed|this|the)',
+        r'^(note|notes|explanation|output|result|example|usage|issue|bug):?\s*$',
+        r'^(here|this|the|it|that)\s+(is|will|should|would|can)',
+        r'^-\s+\w',  # Markdown list items
+        r'^\d+\.\s+\w',  # Numbered lists
+        r'^(now|next|then|finally|also|and)\s+',
+    ]
+    non_code_regex = re.compile('|'.join(non_code_patterns), re.IGNORECASE)
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Detect start of code block
+        if not in_code:
+            # Look for function/class definitions or shebang
+            if re.match(r'^(def |class |import |from |#!|#!/)', stripped):
+                in_code = True
+                code_lines.append(line)
+                empty_line_count = 0
+            continue
+
+        # In code block - check for end markers
+        if non_code_regex.match(stripped):
+            # Hit non-code explanatory text
+            break
+
+        if stripped == '':
+            empty_line_count += 1
+            if empty_line_count >= 2:
+                # Two consecutive empty lines might signal end
+                # But keep going to see what's next
+                code_lines.append(line)
+            else:
+                code_lines.append(line)
+        elif re.match(r'^(def |class |import |from |try:|except |if |for |while |return |raise |print\(|#)', stripped):
+            # Definitely code
+            code_lines.append(line)
+            empty_line_count = 0
+        elif line.startswith('    ') or line.startswith('\t'):
+            # Indented - still in code block
+            code_lines.append(line)
+            empty_line_count = 0
+        elif stripped.startswith('#'):
+            # Comment
+            code_lines.append(line)
+            empty_line_count = 0
+        else:
+            # Unindented non-code line
+            # Check if it looks like a continuation
+            if re.match(r'^[a-z_][a-z0-9_]*\s*[=(]', stripped):
+                # Variable assignment or function call
+                code_lines.append(line)
+                empty_line_count = 0
+            else:
+                # End of code
+                break
+
+    if code_lines:
+        # Remove trailing empty lines
+        while code_lines and code_lines[-1].strip() == '':
+            code_lines.pop()
+        if len(code_lines) >= 2:
+            return '\n'.join(code_lines)
+
+    return None
 
 
 def extract_json(text: str) -> dict | list | None:

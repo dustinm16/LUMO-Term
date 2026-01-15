@@ -217,6 +217,8 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for technical details about how LUMO-Term
 - Requires Firefox with an active LUMO+ session
 - Browser automation adds some overhead vs native API
 - Rate limits apply as per Proton's terms of service
+- Web Search toggle must be enabled manually in LUMO UI for internet queries
+- Some UI features (model selection, toggles) not controllable via CLI
 
 ## Contributing
 
