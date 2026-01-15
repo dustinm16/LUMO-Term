@@ -20,7 +20,9 @@ A prioritized list of potential enhancements to bring LUMO-Term closer to Claude
 | Retry Command | ✅ Implemented |
 | Plain Text Mode | ✅ Implemented |
 | Code Block Extraction | ✅ Implemented |
-| Output Validation Tests | ✅ 22 tests |
+| Output Validation Tests | ✅ 66 tests |
+| Config Module Tests | ✅ 37 tests |
+| Auth Module Tests | ✅ 40 tests |
 
 ---
 
