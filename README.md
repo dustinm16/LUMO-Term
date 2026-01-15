@@ -22,6 +22,17 @@ LUMO+ uses end-to-end encryption for all messages. Rather than reverse-engineeri
 - Works with any future LUMO updates automatically
 - Runs invisibly using Firefox's native headless mode (no visible browser window)
 
+### Why Browser Automation?
+
+**LUMO has no public API.** Proton's "zero-access" architecture means:
+
+- All messages are encrypted client-side before transmission
+- Encryption keys are stored in browser IndexedDB
+- The server never sees plaintext (by design)
+- No API tokens can bypass this encryption
+
+Browser automation is the **only way** to interact with LUMO programmatically while preserving E2E encryption. The browser handles all cryptographic operations transparently.
+
 ## Quick Start
 
 ```bash

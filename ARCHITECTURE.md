@@ -52,6 +52,21 @@ Each message is encrypted client-side before being sent, and responses are encry
 - **Per-token symmetric encryption** (likely AES-GCM)
 - **Proton's pmcrypto library** built on OpenPGP.js
 
+### No Public API Exists
+
+LUMO does **not** have a public REST API. Proton's "zero-access" architecture means:
+
+- `api.lumo.proton.me` - Does not exist
+- `lumo.proton.me/api/` - Returns 404
+- No bearer token authentication available
+- No OpenAI-compatible endpoints
+
+This is by design. A public API would require either:
+1. Transmitting encryption keys (defeats E2E encryption)
+2. Server-side decryption (violates zero-access promise)
+
+Browser automation is the only viable approach for programmatic access.
+
 ### The Solution: Browser as Crypto Provider
 
 Instead of reverse-engineering Proton's encryption:
