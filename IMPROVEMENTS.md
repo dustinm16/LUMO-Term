@@ -23,6 +23,7 @@ A prioritized list of potential enhancements to bring LUMO-Term closer to Claude
 | Output Validation Tests | ✅ 66 tests |
 | Config Module Tests | ✅ 37 tests |
 | Auth Module Tests | ✅ 40 tests |
+| UI/TUI Module Tests | ✅ 46 tests |
 
 ---
 
