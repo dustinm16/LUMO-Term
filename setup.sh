@@ -53,6 +53,23 @@ else
     echo "  Install with: sudo pacman -S firefox (Arch) or sudo apt install firefox (Debian/Ubuntu)"
 fi
 
+# Check clipboard tool
+info "Checking clipboard tools..."
+if command -v xclip &> /dev/null; then
+    success "xclip found"
+elif command -v xsel &> /dev/null; then
+    success "xsel found"
+elif command -v wl-copy &> /dev/null; then
+    success "wl-copy found (Wayland)"
+else
+    warn "No clipboard tool found. /copy and /code commands won't work."
+    echo "  Install one of:"
+    echo "    sudo pacman -S xclip        # Arch (X11)"
+    echo "    sudo apt install xclip      # Debian/Ubuntu (X11)"
+    echo "    sudo pacman -S wl-clipboard # Arch (Wayland)"
+    echo "    sudo apt install wl-clipboard # Debian/Ubuntu (Wayland)"
+fi
+
 # Create virtual environment
 info "Setting up virtual environment..."
 if [ -d "$VENV_DIR" ]; then

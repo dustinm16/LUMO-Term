@@ -198,6 +198,9 @@ Show the browser window for debugging.
 - Python 3.10+
 - Firefox browser
 - Active Proton account with LUMO+ access
+- Clipboard tool (for `/copy` and `/code` commands):
+  - **X11**: `xclip` or `xsel`
+  - **Wayland**: `wl-clipboard`
 
 ## Installation
 
