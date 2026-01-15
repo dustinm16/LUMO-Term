@@ -14,8 +14,28 @@ Attack vectors tested:
 import pytest
 from unittest.mock import Mock, AsyncMock, patch
 from io import StringIO
+from argparse import Namespace
 
 from lumo_term.cli import run_repl, run_single_message
+
+
+def make_mock_args(**kwargs):
+    """Create mock args with defaults."""
+    defaults = {
+        "no_headless": False,
+        "profile": None,
+        "new": False,
+        "message": None,
+        "files": None,
+        "output": None,
+        "append": False,
+        "copy": False,
+        "tui": False,
+        "plain": False,
+        "prompt": None,
+    }
+    defaults.update(kwargs)
+    return Namespace(**defaults)
 
 
 # ============================================================================
@@ -100,6 +120,7 @@ class TestShellInjectionDefense:
         """Response containing shell commands should be displayed, not executed."""
         mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value=payload)
+        mock_args = make_mock_args()
 
         executed_commands = []
 
@@ -108,7 +129,7 @@ class TestShellInjectionDefense:
             with patch("subprocess.Popen", side_effect=lambda *a, **k: executed_commands.append(("Popen", a))):
                 with patch("os.system", side_effect=lambda *a: executed_commands.append(("os.system", a))):
                     with patch("lumo_term.cli.console") as mock_console:
-                        await run_single_message(mock_client, "test")
+                        await run_single_message(mock_client, "test", mock_args)
 
         # No commands should have been executed
         assert len(executed_commands) == 0, f"Commands were executed: {executed_commands}"
@@ -121,13 +142,14 @@ class TestShellInjectionDefense:
         """Backticks in response should be displayed as text."""
         mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value="Run `ls -la` to list files")
+        mock_args = make_mock_args()
 
         printed_content = []
         mock_console = Mock()
         mock_console.print = Mock(side_effect=lambda *a, **k: printed_content.append(str(a)))
 
         with patch("lumo_term.cli.console", mock_console):
-            await run_single_message(mock_client, "test")
+            await run_single_message(mock_client, "test", mock_args)
 
         # Should contain the backticks as literal text
         output = " ".join(printed_content)
@@ -147,6 +169,7 @@ class TestANSIEscapeDefense:
         """ANSI escape sequences in streaming responses should be sanitized or escaped."""
         mock_client = AsyncMock()
         streamed_tokens = []
+        mock_args = make_mock_args()
 
         async def mock_send(msg, on_token=None):
             if on_token:
@@ -165,7 +188,7 @@ class TestANSIEscapeDefense:
 
         with patch("lumo_term.cli.Prompt.ask", side_effect=["test", "/quit"]):
             with patch("lumo_term.cli.console", mock_console):
-                await run_repl(mock_client)
+                await run_repl(mock_client, mock_args)
 
         # Verify markup=False is used for streaming output
         # This ensures Rich doesn't interpret any escape sequences
@@ -188,6 +211,7 @@ class TestRichMarkupDefense:
     async def test_rich_markup_in_streaming_is_literal(self, payload):
         """Rich markup in streaming should be displayed as literal text."""
         mock_client = AsyncMock()
+        mock_args = make_mock_args()
 
         async def mock_send(msg, on_token=None):
             if on_token:
@@ -202,7 +226,7 @@ class TestRichMarkupDefense:
 
         with patch("lumo_term.cli.Prompt.ask", side_effect=["test", "/quit"]):
             with patch("lumo_term.cli.console", mock_console):
-                await run_repl(mock_client)
+                await run_repl(mock_client, mock_args)
 
         # Streaming calls should have markup=False
         streaming_calls = [(a, k) for a, k in printed_calls if k.get("end") == ""]
@@ -222,6 +246,7 @@ class TestResponseContentSafety:
         """Response should never be eval'd or exec'd."""
         mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value="__import__('os').system('evil')")
+        mock_args = make_mock_args()
 
         eval_calls = []
         exec_calls = []
@@ -232,7 +257,7 @@ class TestResponseContentSafety:
         with patch("builtins.eval", side_effect=lambda *a: eval_calls.append(a)):
             with patch("builtins.exec", side_effect=lambda *a: exec_calls.append(a)):
                 with patch("lumo_term.cli.console"):
-                    await run_single_message(mock_client, "test")
+                    await run_single_message(mock_client, "test", mock_args)
 
         # No eval or exec should be called on response content
         assert len(eval_calls) == 0, f"eval was called: {eval_calls}"
@@ -243,13 +268,14 @@ class TestResponseContentSafety:
         """Response content should not be used for file operations."""
         mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value="/etc/passwd")
+        mock_args = make_mock_args()
 
         file_operations = []
 
         with patch("builtins.open", side_effect=lambda *a, **k: file_operations.append(("open", a))):
             with patch("pathlib.Path.read_text", side_effect=lambda *a: file_operations.append(("read", a))):
                 with patch("lumo_term.cli.console"):
-                    await run_single_message(mock_client, "test")
+                    await run_single_message(mock_client, "test", mock_args)
 
         # No file operations on response content
         for op, args in file_operations:
@@ -269,6 +295,7 @@ class TestIntegrationSecurity:
         """A full REPL session with malicious responses should be safe."""
         mock_client = AsyncMock()
         mock_client.new_conversation = AsyncMock()
+        mock_args = make_mock_args()
 
         # Each "response" contains a different attack vector
         attack_responses = iter([
@@ -289,7 +316,7 @@ class TestIntegrationSecurity:
                     "msg1", "msg2", "msg3", "msg4", "msg5", "/quit"
                 ]):
                     with patch("lumo_term.cli.console"):
-                        await run_repl(mock_client)
+                        await run_repl(mock_client, mock_args)
 
         # No commands should have been executed despite malicious responses
         assert len(commands_executed) == 0
@@ -299,9 +326,10 @@ class TestIntegrationSecurity:
         """Empty or None responses should be handled safely."""
         mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value="")
+        mock_args = make_mock_args()
 
         with patch("lumo_term.cli.console") as mock_console:
-            await run_single_message(mock_client, "test")
+            await run_single_message(mock_client, "test", mock_args)
 
         # Should not crash
         mock_console.print.assert_called()
@@ -310,13 +338,14 @@ class TestIntegrationSecurity:
     async def test_extremely_long_response(self):
         """Very long responses should not cause resource exhaustion."""
         mock_client = AsyncMock()
+        mock_args = make_mock_args()
         # 10MB response
         huge_response = "A" * (10 * 1024 * 1024)
         mock_client.send_message = AsyncMock(return_value=huge_response)
 
         with patch("lumo_term.cli.console"):
             # Should complete without memory error
-            await run_single_message(mock_client, "test")
+            await run_single_message(mock_client, "test", mock_args)
 
 
 # ============================================================================
@@ -331,6 +360,7 @@ class TestUserInputSafety:
         """User input should only be sent to LUMO, never executed locally."""
         mock_client = AsyncMock()
         mock_client.send_message = AsyncMock(return_value="OK")
+        mock_args = make_mock_args()
 
         malicious_input = "test; rm -rf /"
 
@@ -339,7 +369,7 @@ class TestUserInputSafety:
         with patch("subprocess.run", side_effect=lambda *a, **k: executed.append(a)):
             with patch("os.system", side_effect=lambda *a: executed.append(a)):
                 with patch("lumo_term.cli.console"):
-                    await run_single_message(mock_client, malicious_input)
+                    await run_single_message(mock_client, malicious_input, mock_args)
 
         # User input should have been passed to LUMO, not executed
         mock_client.send_message.assert_called_once_with(malicious_input)
