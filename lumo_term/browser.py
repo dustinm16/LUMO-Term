@@ -112,6 +112,26 @@ class LumoBrowser:
 
         return temp_dir
 
+    def _get_geckodriver_path(self) -> str:
+        """Get geckodriver path, preferring cached version to avoid GitHub rate limits."""
+        # Check for cached geckodriver first
+        wdm_cache = Path.home() / ".wdm" / "drivers" / "geckodriver" / "linux64"
+        if wdm_cache.exists():
+            # Find the most recent geckodriver
+            for version_dir in sorted(wdm_cache.iterdir(), reverse=True):
+                geckodriver = version_dir / "geckodriver"
+                if geckodriver.exists() and geckodriver.is_file():
+                    return str(geckodriver)
+
+        # Check system PATH
+        import shutil as sh
+        system_geckodriver = sh.which("geckodriver")
+        if system_geckodriver:
+            return system_geckodriver
+
+        # Fall back to webdriver-manager (may hit rate limits)
+        return GeckoDriverManager().install()
+
     async def start(self, progress_callback: Callable[[str], None] | None = None) -> None:
         """Start the browser and navigate to LUMO."""
         def log(msg: str):
@@ -134,7 +154,8 @@ class LumoBrowser:
         options.set_preference("browser.tabs.remote.autostart.2", False)
 
         log("Installing geckodriver...")
-        driver_path = GeckoDriverManager().install()
+        # Try to use cached geckodriver first to avoid GitHub rate limits
+        driver_path = self._get_geckodriver_path()
         service = Service(executable_path=driver_path)
 
         log("Launching Firefox...")
