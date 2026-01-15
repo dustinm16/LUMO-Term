@@ -15,12 +15,12 @@ A terminal client for [Proton LUMO+](https://lumo.proton.me) AI assistant, bring
 
 ## How It Works
 
-LUMO+ uses end-to-end encryption for all messages. Rather than reverse-engineering Proton's encryption protocol, LUMO-Term uses [Selenium](https://www.selenium.dev/) to automate Firefox running on a virtual display (Xvfb). This approach:
+LUMO+ uses end-to-end encryption for all messages. Rather than reverse-engineering Proton's encryption protocol, LUMO-Term uses [Selenium](https://www.selenium.dev/) to automate Firefox in native headless mode. This approach:
 
 - Leverages LUMO's built-in encryption seamlessly
 - Keeps your credentials secure in Firefox's profile
 - Works with any future LUMO updates automatically
-- Runs invisibly on a virtual display (no visible browser window)
+- Runs invisibly using Firefox's native headless mode (no visible browser window)
 
 ## Quick Start
 
@@ -48,11 +48,11 @@ lumo --no-headless
 
 ## Current Status
 
-**Work in Progress**: LUMO+ uses end-to-end encryption with keys stored in browser IndexedDB. This makes headless automation challenging. Current recommended usage:
+**Functional**: LUMO-Term uses Firefox's native headless mode to run invisibly while maintaining full encryption support through browser automation.
 
-- Use `--no-headless` flag to run with visible browser
-- The browser will use your Firefox session for authentication
-- Headless mode is experimental due to encryption key handling
+- Headless mode is the default (browser runs invisibly)
+- Use `--no-headless` flag for debugging (shows browser window)
+- Your Firefox profile provides authentication automatically
 
 ## Usage
 

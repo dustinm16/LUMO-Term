@@ -57,7 +57,7 @@ Each message is encrypted client-side before being sent, and responses are encry
 Instead of reverse-engineering Proton's encryption:
 
 1. We use **Selenium** to control Firefox
-2. Firefox runs on a **virtual display (Xvfb)** - invisible to the user
+2. Firefox runs in **native headless mode** - invisible to the user
 3. Firefox loads LUMO's **web app with all crypto**
 4. We interact via **DOM manipulation**
 5. The browser handles **all encryption/decryption**
@@ -66,7 +66,7 @@ This approach:
 - Works without understanding the crypto protocol
 - Stays compatible with LUMO updates
 - Keeps credentials secure in Firefox's storage
-- Runs invisibly via Xvfb virtual display
+- Runs invisibly via Firefox's native headless mode
 
 ## Module Structure
 
@@ -76,19 +76,19 @@ lumo_term/
 ├── __main__.py      # Entry point for `python -m lumo_term`
 ├── cli.py           # Command-line interface & REPL
 ├── ui.py            # Textual TUI application
-├── browser.py       # Playwright browser automation
+├── browser.py       # Selenium browser automation
 ├── auth.py          # Firefox cookie extraction (for future use)
 └── config.py        # Configuration management
 ```
 
 ### browser.py - Core Engine
 
-The `LumoBrowser` class manages Firefox via Selenium on a virtual display:
+The `LumoBrowser` class manages Firefox via Selenium in headless mode:
 
 ```python
 class LumoBrowser:
     async def start(self, progress_callback=None):
-        """Launch virtual display and Firefox with user's profile"""
+        """Launch Firefox in headless mode with user's profile"""
 
     async def send_message(self, message, on_token=None):
         """Send message and stream response"""
@@ -97,7 +97,7 @@ class LumoBrowser:
         """Start fresh conversation"""
 
     async def stop(self):
-        """Close browser and stop virtual display"""
+        """Close browser and clean up"""
 ```
 
 Key implementation details:
@@ -187,7 +187,7 @@ Storage locations:
 4. browser.py clicks send / presses Enter
            │
            ▼
-5. LUMO web app encrypts message (in browser on Xvfb)
+5. LUMO web app encrypts message (in headless browser)
            │
            ▼
 6. Encrypted message sent to lumo.proton.me
@@ -196,7 +196,7 @@ Storage locations:
 7. Encrypted response streamed back
            │
            ▼
-8. LUMO web app decrypts tokens (in browser on Xvfb)
+8. LUMO web app decrypts tokens (in headless browser)
            │
            ▼
 9. browser.py captures decrypted text via DOM polling
@@ -259,8 +259,8 @@ lumo --profile ~/.mozilla/firefox/xyz.lumo-dedicated
 
 ### Startup Time
 
-- First run: ~5-10 seconds (geckodriver download + virtual display init)
-- Subsequent: ~3-5 seconds (browser launch on virtual display)
+- First run: ~5-10 seconds (geckodriver download + Firefox init)
+- Subsequent: ~3-5 seconds (browser launch in headless mode)
 - Page load: ~2-3 seconds (LUMO app initialization)
 
 ### Response Latency
@@ -270,8 +270,7 @@ lumo --profile ~/.mozilla/firefox/xyz.lumo-dedicated
 
 ### Memory Usage
 
-- Firefox on Xvfb: ~200-400MB RAM
-- Xvfb virtual display: ~10-20MB RAM
+- Firefox (headless): ~200-400MB RAM
 - Python process: ~50-100MB RAM
 
 ## Future Improvements
