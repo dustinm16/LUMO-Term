@@ -187,6 +187,8 @@ Show the browser window for debugging.
 | `/new` or `/n` | Start new conversation |
 | `/retry` or `/r` | Resend last message |
 | `/copy` or `/c` | Copy last response to clipboard |
+| `/code` or `/k` | Copy last code block to clipboard |
+| `/code <n>` | Copy nth code block (if multiple) |
 | `/save <file>` | Save last response to file |
 | `/quit` or `/q` | Exit |
 | `/help` or `/?` | Show help |

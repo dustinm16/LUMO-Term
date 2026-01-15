@@ -13,7 +13,12 @@ from rich.prompt import Prompt
 
 from .browser import LumoBrowser
 from .config import load_config
-from .extract import extract_code_for_file, strip_conversational_text
+from .extract import (
+    extract_code_blocks,
+    extract_code_for_file,
+    extract_code_section,
+    strip_conversational_text,
+)
 
 
 console = Console()
@@ -268,6 +273,8 @@ async def run_repl(client: LumoBrowser, args: argparse.Namespace) -> None:
                     "[bold]/new[/bold] or [bold]/n[/bold] - Start new conversation\n"
                     "[bold]/retry[/bold] or [bold]/r[/bold] - Resend last message\n"
                     "[bold]/copy[/bold] or [bold]/c[/bold] - Copy last response to clipboard\n"
+                    "[bold]/code[/bold] or [bold]/k[/bold] - Copy last code block to clipboard\n"
+                    "[bold]/code <n>[/bold] - Copy nth code block (if multiple)\n"
                     "[bold]/save <file>[/bold] - Save last response to file\n"
                     "[bold]/quit[/bold] or [bold]/q[/bold] - Exit\n"
                     "[bold]/help[/bold] or [bold]/?[/bold] - Show this help",
@@ -292,6 +299,52 @@ async def run_repl(client: LumoBrowser, args: argparse.Namespace) -> None:
                         console.print("[yellow]Could not copy to clipboard (install xclip or xsel)[/yellow]")
                 else:
                     console.print("[yellow]No response to copy[/yellow]")
+                continue
+
+            elif cmd.startswith("/code") or cmd == "/k":
+                if not _last_response:
+                    console.print("[yellow]No response to extract code from[/yellow]")
+                    continue
+
+                # Extract code blocks from last response
+                blocks = extract_code_blocks(_last_response)
+
+                # If no fenced blocks, try inline extraction
+                if not blocks:
+                    inline_code = extract_code_section(_last_response)
+                    if inline_code:
+                        blocks = [{"language": "", "code": inline_code}]
+
+                if not blocks:
+                    console.print("[yellow]No code blocks found in last response[/yellow]")
+                    continue
+
+                # Check if user specified a block number: /code 2
+                parts = user_input.strip().split()
+                block_num = 0
+                if len(parts) > 1 and parts[1].isdigit():
+                    block_num = int(parts[1]) - 1  # 1-indexed for users
+
+                if block_num < 0 or block_num >= len(blocks):
+                    console.print(f"[yellow]Invalid block number. Found {len(blocks)} code block(s).[/yellow]")
+                    if len(blocks) > 1:
+                        for i, b in enumerate(blocks, 1):
+                            lang = f" ({b['language']})" if b['language'] else ""
+                            preview = b['code'][:50].replace('\n', ' ')
+                            console.print(f"  [dim]{i}. {preview}...{lang}[/dim]")
+                    continue
+
+                code = blocks[block_num]["code"]
+                lang = blocks[block_num]["language"]
+
+                if copy_to_clipboard(code):
+                    lang_info = f" ({lang})" if lang else ""
+                    if len(blocks) > 1:
+                        console.print(f"[dim]Code block {block_num + 1}/{len(blocks)}{lang_info} copied to clipboard[/dim]")
+                    else:
+                        console.print(f"[dim]Code block{lang_info} copied to clipboard[/dim]")
+                else:
+                    console.print("[yellow]Could not copy to clipboard (install xclip or xsel)[/yellow]")
                 continue
 
             elif cmd.startswith("/save "):

@@ -243,6 +243,55 @@ class TestREPLCommands:
         mock_copy.assert_called_once_with("Test response")
 
     @pytest.mark.asyncio
+    async def test_code_command(self):
+        """REPL should copy code block on /code."""
+        mock_client = AsyncMock()
+        response_with_code = '''Here's the code:
+
+```python
+def hello():
+    print("Hello")
+```
+
+That's it!'''
+        mock_client.send_message = AsyncMock(return_value=response_with_code)
+        mock_args = make_mock_args()
+
+        with patch("lumo_term.cli.Prompt.ask", side_effect=["Write code", "/code", "/quit"]):
+            with patch("lumo_term.cli.console"):
+                with patch("lumo_term.cli.copy_to_clipboard", return_value=True) as mock_copy:
+                    await run_repl(mock_client, mock_args)
+
+        # Should have copied just the code, not the whole response
+        mock_copy.assert_called_with('def hello():\n    print("Hello")')
+
+    @pytest.mark.asyncio
+    async def test_code_command_with_number(self):
+        """REPL should copy specific code block on /code <n>."""
+        mock_client = AsyncMock()
+        response_with_multiple = '''First:
+
+```python
+first = 1
+```
+
+Second:
+
+```python
+second = 2
+```'''
+        mock_client.send_message = AsyncMock(return_value=response_with_multiple)
+        mock_args = make_mock_args()
+
+        with patch("lumo_term.cli.Prompt.ask", side_effect=["Write code", "/code 2", "/quit"]):
+            with patch("lumo_term.cli.console"):
+                with patch("lumo_term.cli.copy_to_clipboard", return_value=True) as mock_copy:
+                    await run_repl(mock_client, mock_args)
+
+        # Should copy the second code block
+        mock_copy.assert_called_with("second = 2")
+
+    @pytest.mark.asyncio
     async def test_unknown_command(self):
         """REPL should warn on unknown commands."""
         mock_client = AsyncMock()
