@@ -40,22 +40,36 @@ Browser automation is the **only way** to interact with LUMO programmatically wh
 git clone https://github.com/dustinm16/LUMO-Term.git
 cd LUMO-Term
 
-# Create and activate virtual environment
-python3 -m venv venv
-source venv/bin/activate  # On Linux/macOS
-# venv\Scripts\activate   # On Windows
-
-# Install lumo-term and dependencies
-pip install -e .
+# Run the setup script (installs globally)
+./setup.sh
 
 # Make sure you're logged into LUMO+ in Firefox first
 firefox https://lumo.proton.me
 
-# Run the terminal client (visible browser mode recommended)
-lumo --no-headless
+# Run the terminal client
+lumo
 ```
 
-> **Note**: Remember to activate the virtual environment (`source venv/bin/activate`) each time you open a new terminal before running `lumo`.
+The setup script will:
+- Create a Python virtual environment
+- Install all dependencies
+- Add `lumo` to `~/.local/bin` for global access
+
+### Manual Installation
+
+If you prefer manual setup:
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .
+
+# Optional: create symlink for global access
+mkdir -p ~/.local/bin
+ln -s "$(pwd)/venv/bin/lumo" ~/.local/bin/lumo
+```
+
+> **Note**: If using manual installation without the symlink, activate the virtual environment (`source venv/bin/activate`) each time before running `lumo`.
 
 ## Current Status
 
