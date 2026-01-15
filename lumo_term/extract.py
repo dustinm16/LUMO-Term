@@ -206,7 +206,18 @@ def extract_code_section(text: str) -> str | None:
         # Detect start of code block
         if not in_code:
             # Look for function/class definitions or shebang
+            # Python: def, class, import, from
+            # Bash: function_name() {, function name, common commands
             if re.match(r'^(def |class |import |from |#!|#!/)', stripped):
+                in_code = True
+                code_lines.append(line)
+                empty_line_count = 0
+            # Bash function: name() { or function name
+            elif re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\(\)\s*\{', stripped):
+                in_code = True
+                code_lines.append(line)
+                empty_line_count = 0
+            elif re.match(r'^function\s+[a-zA-Z_]', stripped):
                 in_code = True
                 code_lines.append(line)
                 empty_line_count = 0
@@ -252,8 +263,17 @@ def extract_code_section(text: str) -> str | None:
         # Remove trailing empty lines
         while code_lines and code_lines[-1].strip() == '':
             code_lines.pop()
+        # Allow single-line code if it looks complete (e.g., bash function with { })
         if len(code_lines) >= 2:
             return '\n'.join(code_lines)
+        elif len(code_lines) == 1:
+            line = code_lines[0].strip()
+            # Single-line bash function: name() { ... }
+            if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\(\)\s*\{.*\}', line):
+                return line
+            # Single-line command with pipes/logic
+            if '|' in line or '&&' in line or '$(' in line:
+                return line
 
     return None
 
