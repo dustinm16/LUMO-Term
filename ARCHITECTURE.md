@@ -92,6 +92,7 @@ lumo_term/
 ├── cli.py           # Command-line interface & REPL
 ├── ui.py            # Textual TUI application
 ├── browser.py       # Selenium browser automation
+├── extract.py       # Code extraction & response parsing
 ├── auth.py          # Firefox cookie extraction (for future use)
 └── config.py        # Configuration management
 ```
@@ -166,6 +167,41 @@ Currently used for:
 - Detecting available Firefox profiles
 - Validating user is logged in
 - Future: Direct API access if encryption is solved
+
+### extract.py - Code Extraction
+
+Intelligent extraction of code from LUMO responses:
+
+```python
+def extract_code_blocks(text: str) -> list[CodeBlock]:
+    """Extract markdown-fenced code blocks."""
+
+def extract_code_section(text: str) -> str | None:
+    """Extract inline code without fences using language detection."""
+
+def _detect_language(line: str) -> str | None:
+    """Detect programming language from code patterns."""
+```
+
+**Multi-language Support (15 languages):**
+
+The module uses language-specific patterns to detect code:
+
+| Language | Start Patterns |
+|----------|----------------|
+| Python | `def func(`, `class Foo:`, `import`, decorators |
+| Bash | `func() {`, `function name`, shebangs, command pipelines |
+| PowerShell | `Get-*`, `Set-*`, `$var =`, `function` |
+| Rust | `fn`, `struct`, `impl`, `use` |
+| JavaScript | `const`, `let`, `function`, `=>` |
+| And 10 more... | See `LANGUAGE_PATTERNS` in source |
+
+**How extraction works:**
+
+1. First tries to find markdown code fences (`` ```lang ... ``` ``)
+2. If none found, scans for language-specific start patterns
+3. Continues collecting lines while they match continuation patterns
+4. Stops when conversational text is detected ("How it works:", etc.)
 
 ### config.py - Configuration
 

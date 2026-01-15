@@ -197,7 +197,9 @@ Show the browser window for debugging.
 
 ### Code Extraction
 
-The `/code` command intelligently extracts code from LUMO responses, even when not wrapped in markdown fences. Supported languages:
+The `/code` command intelligently extracts code from LUMO responses, even when not wrapped in markdown fences. It detects code by recognizing language-specific patterns like function definitions, imports, and common commands.
+
+**Supported Languages (15):**
 
 | Category | Languages |
 |----------|-----------|
@@ -207,11 +209,22 @@ The `/code` command intelligently extracts code from LUMO responses, even when n
 | **Enterprise** | Java, SQL |
 | **Config** | YAML, Dockerfile |
 
+**What it detects:**
+- Function/class definitions (`def`, `fn`, `func`, `function`)
+- Shell commands with pipes (`ls | grep | awk`)
+- PowerShell cmdlets (`Get-Process`, `Set-Item`)
+- Import statements, shebangs, and more
+
 ```bash
 # Example workflow
-lumo "Write a Python function to reverse a string"
-# LUMO responds with code...
-/code     # Copies the function to clipboard
+lumo
+> Write a bash one-liner to find large files
+# LUMO responds: "find . -type f -exec du -h {} + | sort -rh | head"
+> /code
+# Code copied to clipboard!
+
+# Or extract specific block when multiple exist
+> /code 2    # Copies the second code block
 ```
 
 ## Requirements
