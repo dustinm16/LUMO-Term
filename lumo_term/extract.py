@@ -55,6 +55,8 @@ LANGUAGE_PATTERNS: dict[str, tuple[list[str], list[str]]] = {
             r'^function\s+[a-zA-Z_]',                 # function name
             r'^#!.*(bash|sh|zsh)',                    # Shebang
             r'^(if|for|while|case|select)\s+.*;\s*(then|do)',  # Control flow
+            r'^(ls|cat|grep|awk|sed|find|xargs|sort|head|tail|cut|wc|tr|tee|curl|wget)\s.*\|',  # Command pipelines
+            r'^\$\(.+\)|\$\{.+\}',                    # Command/variable substitution
         ],
         [
             r'^(if|then|else|elif|fi|for|do|done|while|until|case|esac|function)\b',
