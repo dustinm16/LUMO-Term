@@ -12,6 +12,8 @@ A terminal client for [Proton LUMO+](https://lumo.proton.me) AI assistant, bring
 - **Streaming Responses** - See responses as they're generated
 - **Session Persistence** - Leverages your existing Firefox login
 - **Headless Operation** - Runs invisibly in the background
+- **Code Extraction** - Extract and copy code blocks in 15 languages
+- **Pipe Support** - Send files and command output to LUMO
 
 ## How It Works
 
@@ -192,6 +194,25 @@ Show the browser window for debugging.
 | `/save <file>` | Save last response to file |
 | `/quit` or `/q` | Exit |
 | `/help` or `/?` | Show help |
+
+### Code Extraction
+
+The `/code` command intelligently extracts code from LUMO responses, even when not wrapped in markdown fences. Supported languages:
+
+| Category | Languages |
+|----------|-----------|
+| **Scripting** | Python, Bash, PowerShell, Ruby, Batch |
+| **Systems** | Rust, Go, C, C++ |
+| **Web** | JavaScript, TypeScript |
+| **Enterprise** | Java, SQL |
+| **Config** | YAML, Dockerfile |
+
+```bash
+# Example workflow
+lumo "Write a Python function to reverse a string"
+# LUMO responds with code...
+/code     # Copies the function to clipboard
+```
 
 ## Requirements
 

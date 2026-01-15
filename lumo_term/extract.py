@@ -3,6 +3,11 @@
 This module provides functions to extract clean, usable content from
 LUMO responses, removing conversational wrapper text and extracting
 code blocks, JSON, and other structured content.
+
+Supported languages for inline code detection:
+- Python, Bash, PowerShell, Rust, Batch
+- JavaScript, TypeScript, Go, Ruby
+- C, C++, Java, SQL, YAML, Dockerfile
 """
 
 import ast
@@ -22,6 +27,226 @@ CODE_FENCE_PATTERN = re.compile(
     r"```(\w*)\n(.*?)```",
     re.DOTALL
 )
+
+# Language detection patterns - maps language to (start_patterns, continuation_patterns)
+# Start patterns detect the beginning of code blocks
+# Continuation patterns help identify lines that are still part of code
+LANGUAGE_PATTERNS: dict[str, tuple[list[str], list[str]]] = {
+    "python": (
+        [
+            r'^def\s+\w+\s*\(',           # def func(
+            r'^async\s+def\s+\w+\s*\(',   # async def func(
+            r'^class\s+\w+[\s:(]',        # class Foo: or class Foo(
+            r'^(import|from)\s+\w+',      # import/from statements
+            r'^@\w+\s*(\(|$)',            # Decorators: @foo or @foo(...)
+            r'^#!.*python',
+        ],
+        [
+            r'^(def|class|import|from|if|elif|else|for|while|try|except|finally|with|return|yield|raise|assert|pass|break|continue|lambda)\s',
+            r'^(print|input|open|len|range|enumerate|zip|map|filter|sorted|list|dict|set|tuple)\s*\(',
+            r'^\s+',  # Indented lines
+            r'^#(?!.*python)',  # Comments (but not shebangs)
+            r'^@\w+\s*(\(|$)',  # Decorators
+        ],
+    ),
+    "bash": (
+        [
+            r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\(\)\s*\{',  # func() {
+            r'^function\s+[a-zA-Z_]',                 # function name
+            r'^#!.*(bash|sh|zsh)',                    # Shebang
+            r'^(if|for|while|case|select)\s+.*;\s*(then|do)',  # Control flow
+        ],
+        [
+            r'^(if|then|else|elif|fi|for|do|done|while|until|case|esac|function)\b',
+            r'^(echo|printf|read|cd|ls|cat|grep|awk|sed|chmod|mkdir|rm|cp|mv|find|xargs)\b',
+            r'^\s*\w+\s*=',           # Variable assignment
+            r'\||\&\&|\|\|',          # Pipes and logic
+            r'\$\(|\$\{|\$\w',        # Variables/subshells
+            r'^#',                     # Comments
+            r'^\s+',                   # Indented
+        ],
+    ),
+    "powershell": (
+        [
+            r'^function\s+[A-Za-z]',
+            r'^(Get|Set|New|Remove|Add|Clear|Import|Export|Invoke|Start|Stop|Write|Read)-[A-Za-z]',
+            r'^\$\w+\s*=',
+            r'^#!.*pwsh',
+            r'^param\s*\(',
+        ],
+        [
+            r'^(function|if|else|elseif|switch|for|foreach|while|do|try|catch|finally|return|throw|param)\b',
+            r'^(Get|Set|New|Remove|Add|Clear|Import|Export|Invoke|Start|Stop|Write|Read)-',
+            r'^\$\w+',                 # Variables
+            r'^\s+',                   # Indented
+            r'^#',                     # Comments
+            r'\|',                     # Pipes
+        ],
+    ),
+    "rust": (
+        [
+            r'^(pub\s+)?(fn|struct|enum|impl|trait|mod|type|const|static|use)\s',
+            r'^#!\[',                  # Inner attributes
+            r'^#\[',                   # Outer attributes
+        ],
+        [
+            r'^(pub\s+)?(fn|struct|enum|impl|trait|mod|type|const|static|use|let|mut|if|else|match|for|while|loop|return|break|continue)\b',
+            r'^(println!|print!|format!|vec!|panic!|assert!)',
+            r'^\s+',                   # Indented
+            r'^//',                    # Comments
+            r'^#\[',                   # Attributes
+        ],
+    ),
+    "batch": (
+        [
+            r'^@echo\s+(off|on)',
+            r'^rem\s',
+            r'^set\s+\w+=',
+            r'^::\s',                  # Comment style
+        ],
+        [
+            r'^(echo|set|if|else|for|goto|call|exit|pause|rem|setlocal|endlocal|pushd|popd)\b',
+            r'^:\w+',                  # Labels
+            r'^@',                     # @ prefix
+            r'^::\s',                  # Comments
+            r'%\w+%',                  # Variables
+        ],
+    ),
+    "javascript": (
+        [
+            r'^(const|let|var|function|class|import|export)\s',
+            r'^(async\s+)?function\s*\*?\s*\w*\s*\(',
+            r'^#!.*node',
+            r'^\s*\(\s*\)\s*=>\s*\{',  # Arrow function
+        ],
+        [
+            r'^(const|let|var|function|class|import|export|if|else|for|while|do|switch|try|catch|finally|return|throw|new|async|await)\b',
+            r'^(console|document|window|require|module)\.',
+            r'^\s+',                   # Indented
+            r'^//',                    # Comments
+            r'=>',                     # Arrow functions
+        ],
+    ),
+    "typescript": (
+        [
+            r'^(const|let|var|function|class|import|export|interface|type|enum|namespace)\s',
+            r'^(async\s+)?function\s*\*?\s*\w*\s*[<(]',
+        ],
+        [
+            r'^(const|let|var|function|class|import|export|interface|type|enum|namespace|if|else|for|while|return|async|await)\b',
+            r'^\s*\w+\s*[?:]',         # Property: type annotations
+            r':\s*(string|number|boolean|any|void|never|unknown|object|null)\b',
+            r'^\s+',
+            r'^//',
+            r'^[{};\[\]]\s*$',         # Braces
+        ],
+    ),
+    "go": (
+        [
+            r'^package\s+\w+',
+            r'^func\s+(\(\w+\s+\*?\w+\)\s*)?\w+\s*\(',
+            r'^import\s+[("]+',
+            r'^type\s+\w+\s+(struct|interface)',
+        ],
+        [
+            r'^(package|import|func|type|struct|interface|var|const|if|else|for|range|switch|case|return|go|defer|chan|select)\b',
+            r'^(fmt|log|os|io|net|http|strings|strconv)\.',
+            r'^\s+',
+            r'^//',
+        ],
+    ),
+    "ruby": (
+        [
+            r'^(def|class|module)\s+\w+',
+            r'^require\s+[\'"]',
+            r'^#!.*ruby',
+        ],
+        [
+            r'^(def|class|module|if|elsif|else|unless|case|when|while|until|for|begin|rescue|ensure|end|return|yield|do|require|include|extend)\b',
+            r'^(puts|print|gets|p)\s',
+            r'^\s+',
+            r'^#',
+        ],
+    ),
+    "c": (
+        [
+            r'^#include\s*[<"]',
+            r'^(int|void|char|float|double|long|short|unsigned|signed|struct|enum|typedef)\s+\w+\s*[(\[]',
+            r'^(int|void)\s+main\s*\(',
+        ],
+        [
+            r'^#(include|define|ifdef|ifndef|endif|pragma)',
+            r'^(int|void|char|float|double|long|short|unsigned|signed|struct|enum|typedef|if|else|for|while|do|switch|case|return|break|continue|sizeof)\b',
+            r'^\s+',
+            r'^//',
+            r'^/\*',
+        ],
+    ),
+    "cpp": (
+        [
+            r'^#include\s*[<"]',
+            r'^(class|struct|namespace|template)\s+\w+',
+            r'^(int|void)\s+main\s*\(',
+            r'^using\s+(namespace|std)',
+        ],
+        [
+            r'^#(include|define|ifdef|ifndef|endif|pragma)',
+            r'^(class|struct|namespace|template|public|private|protected|virtual|override|const|static|int|void|auto|if|else|for|while|return|new|delete|try|catch|throw)\b',
+            r'^(std|cout|cin|endl|vector|string|map|set)::',
+            r'^\s+',
+            r'^//',
+        ],
+    ),
+    "java": (
+        [
+            r'^(public|private|protected)?\s*(static\s+)?(class|interface|enum)\s+\w+',
+            r'^package\s+[\w.]+;',
+            r'^import\s+[\w.*]+;',
+        ],
+        [
+            r'^(public|private|protected|static|final|abstract|class|interface|enum|extends|implements|new|return|if|else|for|while|do|switch|try|catch|finally|throw|throws|void|int|long|double|float|boolean|char|String)\b',
+            r'^(System|String|Integer|List|Map|Set|ArrayList|HashMap)\.',
+            r'^\s+',
+            r'^//',
+            r'^@\w+',  # Annotations
+        ],
+    ),
+    "sql": (
+        [
+            r'^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|GRANT|REVOKE)\s',
+            r'^--\s',
+            r'^WITH\s+\w+\s+AS',
+        ],
+        [
+            r'^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|FROM|WHERE|JOIN|LEFT|RIGHT|INNER|OUTER|ON|AND|OR|NOT|IN|EXISTS|GROUP|ORDER|BY|HAVING|LIMIT|OFFSET|AS|SET|VALUES|INTO|TABLE|INDEX|VIEW|GRANT|REVOKE|UNION|DISTINCT)\b',
+            r'^\s+',
+            r'^--',
+        ],
+    ),
+    "yaml": (
+        [
+            r'^---\s*$',                           # Document start
+            r'^\w+:\s+[\'"\d\[\{]',                # key: "value" or key: 123 (not key: type)
+            r'^\w+:\s*$',                          # key: (no value, block follows)
+        ],
+        [
+            r'^\s+-\s+',
+            r'^\s+\w+:',
+            r'^\w+:\s',
+            r'^#',
+        ],
+    ),
+    "dockerfile": (
+        [
+            r'^FROM\s+\w+',
+            r'^#\s*syntax\s*=',
+        ],
+        [
+            r'^(FROM|RUN|CMD|LABEL|EXPOSE|ENV|ADD|COPY|ENTRYPOINT|VOLUME|USER|WORKDIR|ARG|ONBUILD|STOPSIGNAL|HEALTHCHECK|SHELL)\s',
+            r'^#',
+        ],
+    ),
+}
 
 # Patterns that indicate conversational intro text
 INTRO_PATTERNS = [
@@ -162,21 +387,89 @@ def extract_code_for_file(
 
 def _looks_like_code(text: str) -> bool:
     """Heuristic check if text looks like code."""
-    code_indicators = [
-        r"^(?:def|class|import|from|if|for|while|return|function|const|let|var)\s",
-        r"^#!",  # Shebang
-        r"[{};]\s*$",  # Braces/semicolons at end of lines
-        r"^\s*(?:public|private|protected)\s",  # Java/C# modifiers
+    # Collect all start patterns from all languages
+    for lang, (start_patterns, _) in LANGUAGE_PATTERNS.items():
+        for pattern in start_patterns:
+            if re.search(pattern, text, re.MULTILINE | re.IGNORECASE):
+                return True
+
+    # Additional generic code indicators
+    generic_indicators = [
+        r"^#!",                    # Shebang
+        r"[{};]\s*$",              # Braces/semicolons at end of lines
+        r"^\s*\w+\s*\([^)]*\)\s*[{:]",  # Function definitions
         r"=\s*(?:function|\(.*?\)\s*=>)",  # JS functions
     ]
-    return any(re.search(p, text, re.MULTILINE) for p in code_indicators)
+    return any(re.search(p, text, re.MULTILINE) for p in generic_indicators)
+
+
+def _detect_language(line: str) -> str | None:
+    """Detect which language a line of code belongs to.
+
+    Args:
+        line: A single line of text.
+
+    Returns:
+        Language name if detected, None otherwise.
+    """
+    stripped = line.strip()
+
+    # Languages where keywords are case-insensitive
+    case_insensitive_langs = {"sql", "batch", "powershell"}
+
+    for lang, (start_patterns, _) in LANGUAGE_PATTERNS.items():
+        flags = re.IGNORECASE if lang in case_insensitive_langs else 0
+        for pattern in start_patterns:
+            if re.match(pattern, stripped, flags):
+                return lang
+    return None
+
+
+def _is_code_continuation(line: str, language: str | None) -> bool:
+    """Check if a line continues a code block in the given language.
+
+    Args:
+        line: The line to check.
+        language: The detected language, or None for generic check.
+
+    Returns:
+        True if line looks like code continuation.
+    """
+    stripped = line.strip()
+
+    # Empty lines and indented lines are usually continuations
+    if not stripped or line.startswith('    ') or line.startswith('\t'):
+        return True
+
+    # Check language-specific continuation patterns
+    if language and language in LANGUAGE_PATTERNS:
+        _, continuation_patterns = LANGUAGE_PATTERNS[language]
+        case_insensitive_langs = {"sql", "batch", "powershell"}
+        flags = re.IGNORECASE if language in case_insensitive_langs else 0
+        for pattern in continuation_patterns:
+            if re.match(pattern, stripped, flags):
+                return True
+
+    # Generic code patterns (work for most languages)
+    generic_patterns = [
+        r'^\s+',                        # Indented
+        r'^[{}()\[\]];?\s*$',           # Braces only
+        r'^\w+\s*[=(]',                 # Assignment or call
+        r'^(//|#|--|/\*|\*)',           # Comments
+        r'[{};]\s*$',                   # Ends with brace/semicolon
+    ]
+    for pattern in generic_patterns:
+        if re.match(pattern, stripped):
+            return True
+
+    return False
 
 
 def extract_code_section(text: str) -> str | None:
     """Extract code section from response without code fences.
 
-    Looks for patterns like function definitions and extracts
-    the code block even when not wrapped in markdown fences.
+    Supports multiple languages: Python, Bash, PowerShell, Rust, Batch,
+    JavaScript, TypeScript, Go, Ruby, C, C++, Java, SQL, YAML, Dockerfile.
 
     Args:
         text: Response text that may contain inline code.
@@ -185,18 +478,22 @@ def extract_code_section(text: str) -> str | None:
         Extracted code section, or None if no code found.
     """
     lines = text.split('\n')
-    code_lines = []
+    code_lines: list[str] = []
     in_code = False
+    detected_language: str | None = None
     empty_line_count = 0
 
-    # Patterns that indicate we're leaving code
+    # Patterns that indicate we're leaving code (conversational text)
     non_code_patterns = [
         r'^what\s+(changed|this|the)',
-        r'^(note|notes|explanation|output|result|example|usage|issue|bug):?\s*$',
-        r'^(here|this|the|it|that)\s+(is|will|should|would|can)',
-        r'^-\s+\w',  # Markdown list items
-        r'^\d+\.\s+\w',  # Numbered lists
-        r'^(now|next|then|finally|also|and)\s+',
+        r'^(note|notes|explanation|output|result|example|usage|issue|bug|warning|tip|important):?\s*$',
+        r'^(here|this|the|it|that)\s+(is|are|will|should|would|can|could|may|might)',
+        r'^-\s+[A-Z]',       # Markdown list items starting with capital
+        r'^\d+\.\s+[A-Z]',   # Numbered lists starting with capital
+        r'^(now|next|then|finally|also|and|or|but|however|therefore)\s+',
+        r'^(you|we|i|they|he|she|it)\s+(can|could|should|will|would|may|might|must)',
+        r'^(how|why|what|when|where|which)\s+(it|this|the|to)\s+',
+        r'^(save|copy|run|execute|compile|install|download|open|click)\s+(this|the|it|to)',
     ]
     non_code_regex = re.compile('|'.join(non_code_patterns), re.IGNORECASE)
 
@@ -205,74 +502,61 @@ def extract_code_section(text: str) -> str | None:
 
         # Detect start of code block
         if not in_code:
-            # Look for function/class definitions or shebang
-            # Python: def, class, import, from
-            # Bash: function_name() {, function name, common commands
-            if re.match(r'^(def |class |import |from |#!|#!/)', stripped):
-                in_code = True
-                code_lines.append(line)
-                empty_line_count = 0
-            # Bash function: name() { or function name
-            elif re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\(\)\s*\{', stripped):
-                in_code = True
-                code_lines.append(line)
-                empty_line_count = 0
-            elif re.match(r'^function\s+[a-zA-Z_]', stripped):
+            detected_language = _detect_language(stripped)
+            if detected_language:
                 in_code = True
                 code_lines.append(line)
                 empty_line_count = 0
             continue
 
         # In code block - check for end markers
-        if non_code_regex.match(stripped):
-            # Hit non-code explanatory text
+        if non_code_regex.match(stripped) and empty_line_count > 0:
+            # Hit non-code explanatory text after blank line
             break
 
         if stripped == '':
             empty_line_count += 1
-            if empty_line_count >= 2:
-                # Two consecutive empty lines might signal end
-                # But keep going to see what's next
-                code_lines.append(line)
-            else:
-                code_lines.append(line)
-        elif re.match(r'^(def |class |import |from |try:|except |if |for |while |return |raise |print\(|#)', stripped):
-            # Definitely code
+            if empty_line_count >= 3:
+                # Three consecutive empty lines = end of code
+                break
             code_lines.append(line)
-            empty_line_count = 0
-        elif line.startswith('    ') or line.startswith('\t'):
-            # Indented - still in code block
-            code_lines.append(line)
-            empty_line_count = 0
-        elif stripped.startswith('#'):
-            # Comment
+        elif _is_code_continuation(line, detected_language):
             code_lines.append(line)
             empty_line_count = 0
         else:
-            # Unindented non-code line
-            # Check if it looks like a continuation
-            if re.match(r'^[a-z_][a-z0-9_]*\s*[=(]', stripped):
-                # Variable assignment or function call
-                code_lines.append(line)
-                empty_line_count = 0
+            # Check if this could be a new code construct in same language
+            new_lang = _detect_language(stripped)
+            if new_lang == detected_language or new_lang is None:
+                # Continue if it looks like code
+                if re.match(r'^[a-zA-Z_]\w*\s*[=({\[]', stripped):
+                    code_lines.append(line)
+                    empty_line_count = 0
+                else:
+                    # End of code block
+                    break
             else:
-                # End of code
+                # Different language detected - end current block
                 break
 
     if code_lines:
         # Remove trailing empty lines
         while code_lines and code_lines[-1].strip() == '':
             code_lines.pop()
-        # Allow single-line code if it looks complete (e.g., bash function with { })
+
+        # Return code if we have meaningful content
         if len(code_lines) >= 2:
             return '\n'.join(code_lines)
         elif len(code_lines) == 1:
             line = code_lines[0].strip()
-            # Single-line bash function: name() { ... }
+            # Single-line constructs that are complete
+            # Bash function: name() { ... }
             if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\(\)\s*\{.*\}', line):
                 return line
-            # Single-line command with pipes/logic
-            if '|' in line or '&&' in line or '$(' in line:
+            # Single-line with pipes/logic/subshells
+            if '|' in line or '&&' in line or '$(' in line or ';' in line:
+                return line
+            # PowerShell one-liner
+            if re.match(r'^(Get|Set|New|Remove|Invoke)-\w+', line, re.IGNORECASE):
                 return line
 
     return None
