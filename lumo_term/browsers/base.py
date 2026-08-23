@@ -104,9 +104,15 @@ class BaseLumoBrowser(ABC):
         """Wait for LUMO to be fully loaded and authenticated."""
         try:
             wait = WebDriverWait(self._driver, timeout)
+            # LUMO's composer is a `<textarea class="tiptap ProseMirror ...">`,
+            # not a div — `.tiptap.ProseMirror` matches by class regardless of
+            # tag. `div[contenteditable="true"]` stays as a fallback in case
+            # LUMO ever reverts to a contenteditable-div editor. Missing the
+            # textarea form here previously spun for the full timeout on an
+            # otherwise fully-loaded, authenticated page.
             wait.until(EC.presence_of_element_located((
                 By.CSS_SELECTOR,
-                'div.tiptap.ProseMirror, div[contenteditable="true"]'
+                '.tiptap.ProseMirror, div[contenteditable="true"]'
             )))
             await asyncio.sleep(2)
         except TimeoutException:
@@ -133,9 +139,15 @@ class BaseLumoBrowser(ABC):
             self._driver = None
 
     def _find_input_element(self):
-        """Find the message input element (TipTap/ProseMirror editor)."""
+        """Find the message input element (TipTap/ProseMirror editor).
+
+        Currently a `<textarea class="tiptap ProseMirror composer ...">`;
+        the div-based selectors are kept as fallbacks in case LUMO reverts
+        to a contenteditable-div editor.
+        """
         selectors = [
-            'div.tiptap.ProseMirror',
+            'textarea.tiptap.ProseMirror',
+            '.tiptap.ProseMirror',
             'div[contenteditable="true"].composer',
             'div[contenteditable="true"]',
             'textarea',

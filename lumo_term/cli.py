@@ -478,15 +478,19 @@ async def async_main() -> int:
     def on_progress(msg: str):
         console.print(f"[dim]  {msg}[/dim]")
 
+    client = create_browser_client(
+        browser=args.browser or config.browser,
+        profile=args.profile or (Path(config.browser_profile) if config.browser_profile else None),
+        headless=not args.no_headless,
+    )
     try:
-        client = create_browser_client(
-            browser=args.browser or config.browser,
-            profile=args.profile or (Path(config.browser_profile) if config.browser_profile else None),
-            headless=not args.no_headless,
-        )
         await client.start(progress_callback=on_progress)
     except Exception as e:
         console.print(f"[red]Failed to start: {e}[/red]")
+        # start() can fail after the driver process is already launched
+        # (e.g. the LUMO page never finished loading in time) — without
+        # this, every failed attempt leaks an orphaned browser process.
+        await client.stop()
         return 1
 
     try:

@@ -59,5 +59,14 @@ async def create_lumo_client(
 ) -> BaseLumoBrowser:
     """Create and start a LUMO+ browser client."""
     client = create_browser_client(browser=browser, profile=profile, headless=headless)
-    await client.start()
+    try:
+        await client.start()
+    except Exception:
+        # start() can fail after the driver process is already launched
+        # (e.g. the LUMO page never finished loading in time). Callers only
+        # get a client back on success, so they have no way to clean this up
+        # themselves — without this, every failed attempt leaks an orphaned
+        # browser process.
+        await client.stop()
+        raise
     return client
