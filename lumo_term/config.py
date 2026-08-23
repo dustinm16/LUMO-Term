@@ -10,16 +10,9 @@ from pydantic import BaseModel
 class Config(BaseModel):
     """Application configuration."""
 
-    firefox_profile: str | None = None  # Override auto-detection
+    browser: str | None = None  # "firefox" | "chrome" | "edge" | "chromium"; None = auto-detect
+    browser_profile: str | None = None  # Override profile auto-detection
     theme: str = "dark"
-
-
-class Session(BaseModel):
-    """Cached session data."""
-
-    uid: str | None = None
-    cookies: dict[str, str] = {}
-    conversation_id: str | None = None
 
 
 def get_config_dir() -> Path:
@@ -32,11 +25,6 @@ def get_config_dir() -> Path:
 def get_config_path() -> Path:
     """Get the config file path."""
     return get_config_dir() / "config.json"
-
-
-def get_session_path() -> Path:
-    """Get the session cache file path."""
-    return get_config_dir() / "session.json"
 
 
 def load_config() -> Config:
@@ -55,28 +43,3 @@ def save_config(config: Config) -> None:
     """Save configuration to file."""
     config_path = get_config_path()
     config_path.write_text(config.model_dump_json(indent=2))
-
-
-def load_session() -> Session:
-    """Load cached session data."""
-    session_path = get_session_path()
-    if session_path.exists():
-        try:
-            data = json.loads(session_path.read_text())
-            return Session.model_validate(data)
-        except (json.JSONDecodeError, ValueError):
-            pass
-    return Session()
-
-
-def save_session(session: Session) -> None:
-    """Save session data to cache."""
-    session_path = get_session_path()
-    session_path.write_text(session.model_dump_json(indent=2))
-
-
-def clear_session() -> None:
-    """Clear cached session data."""
-    session_path = get_session_path()
-    if session_path.exists():
-        session_path.unlink()

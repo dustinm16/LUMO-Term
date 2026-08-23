@@ -10,19 +10,26 @@ A terminal client for [Proton LUMO+](https://lumo.proton.me) AI assistant, bring
 - **Interactive REPL** - Chat with LUMO+ directly from your terminal
 - **Rich TUI** - Full terminal UI with markdown rendering and syntax highlighting
 - **Streaming Responses** - See responses as they're generated
-- **Session Persistence** - Leverages your existing Firefox login
+- **Multi-Browser Support** - Works with Firefox, Chrome, Edge, or Chromium
+- **Cross-Platform** - Linux, macOS, and Windows (any OS with Python 3.10+)
+- **Session Persistence** - Leverages your existing browser login, whichever browser that is
 - **Headless Operation** - Runs invisibly in the background
 - **Code Extraction** - Extract and copy code blocks in 15 languages
 - **Pipe Support** - Send files and command output to LUMO
 
 ## How It Works
 
-LUMO+ uses end-to-end encryption for all messages. Rather than reverse-engineering Proton's encryption protocol, LUMO-Term uses [Selenium](https://www.selenium.dev/) to automate Firefox in native headless mode. This approach:
+LUMO+ uses end-to-end encryption for all messages. Rather than reverse-engineering Proton's encryption protocol, LUMO-Term uses [Selenium](https://www.selenium.dev/) to automate your real, already-logged-in browser profile in native headless mode — Firefox, Chrome, Edge, or Chromium. This approach:
 
 - Leverages LUMO's built-in encryption seamlessly
-- Keeps your credentials secure in Firefox's profile
+- Keeps your credentials secure in your browser's own profile — nothing is copied or extracted
 - Works with any future LUMO updates automatically
-- Runs invisibly using Firefox's native headless mode (no visible browser window)
+- Runs invisibly using the browser's native headless mode (no visible window)
+
+> **Note:** Because LUMO-Term launches your browser directly against its real profile
+> directory (rather than a copy), **the target browser must be fully closed** before
+> running `lumo` — Firefox and Chromium-based browsers both refuse a second process
+> against a profile that's already open.
 
 ### Why Browser Automation?
 
@@ -42,20 +49,20 @@ Browser automation is the **only way** to interact with LUMO programmatically wh
 git clone https://github.com/dustinm16/LUMO-Term.git
 cd LUMO-Term
 
-# Run the setup script (installs globally)
+# Run the setup script (installs globally) — Linux/macOS
 ./setup.sh
+# Windows: python install.py   (or setup.ps1)
 
-# Make sure you're logged into LUMO+ in Firefox first
-firefox https://lumo.proton.me
-
-# Run the terminal client
+# Make sure you're logged into LUMO+ in a supported browser first,
+# then close that browser completely
 lumo
 ```
 
-The setup script will:
+The setup script (`install.py`, wrapped by `setup.sh`/`setup.ps1`) will:
 - Create a Python virtual environment
 - Install all dependencies
-- Add `lumo` to `~/.local/bin` for global access
+- Detect which supported browsers (Firefox/Chrome/Edge/Chromium) are installed and report whether a usable profile was found for each
+- Add `lumo` to `~/.local/bin` for global access (or a `lumo.cmd` shim on Windows)
 
 ### Manual Installation
 
@@ -63,10 +70,10 @@ If you prefer manual setup:
 
 ```bash
 python3 -m venv venv
-source venv/bin/activate
+source venv/bin/activate      # venv\Scripts\activate on Windows
 pip install -e .
 
-# Optional: create symlink for global access
+# Optional: create symlink for global access (Linux/macOS)
 mkdir -p ~/.local/bin
 ln -s "$(pwd)/venv/bin/lumo" ~/.local/bin/lumo
 ```
@@ -75,11 +82,12 @@ ln -s "$(pwd)/venv/bin/lumo" ~/.local/bin/lumo
 
 ## Current Status
 
-**Functional**: LUMO-Term uses Firefox's native headless mode to run invisibly while maintaining full encryption support through browser automation.
+**Functional**: LUMO-Term launches Firefox, Chrome, Edge, or Chromium in native headless mode directly against your real, already-authenticated profile.
 
 - Headless mode is the default (browser runs invisibly)
 - Use `--no-headless` flag for debugging (shows browser window)
-- Your Firefox profile provides authentication automatically
+- Use `--browser {firefox,chrome,edge,chromium}` to pick a specific browser (auto-detected otherwise)
+- Your browser profile provides authentication automatically — **the browser must be closed** before `lumo` runs
 
 ## Usage
 
@@ -179,7 +187,8 @@ Show the browser window for debugging.
 | `--language LANG` | Preferred language for code extraction |
 | `--tui` | Launch full TUI interface |
 | `--no-headless` | Show browser window |
-| `--profile PATH` | Use specific Firefox profile |
+| `--browser {firefox,chrome,edge,chromium}` | Browser to automate (auto-detected if not specified) |
+| `--profile PATH` | Use specific browser profile |
 | `--new` | Start a new conversation |
 
 ### REPL Commands
@@ -229,10 +238,10 @@ lumo
 
 ## Requirements
 
-- Python 3.10+
-- Firefox browser
-- Active Proton account with LUMO+ access
-- Clipboard tool (for `/copy` and `/code` commands):
+- Python 3.10+ (Linux, macOS, or Windows)
+- One of: Firefox, Chrome, Edge, or Chromium
+- Active Proton account with LUMO+ access, logged in to that browser
+- Clipboard tool (for `/copy` and `/code` commands, Linux only — macOS/Windows use the system clipboard):
   - **X11**: `xclip` or `xsel`
   - **Wayland**: `wl-clipboard`
 
@@ -246,14 +255,15 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for technical details about how LUMO-Term
 
 ## Security & Privacy
 
-- **No credential storage** - Your Proton credentials stay in Firefox
+- **No credential storage** - Your Proton credentials stay in your browser's own profile
 - **No data collection** - All processing happens locally
 - **E2E encryption preserved** - Messages remain encrypted end-to-end
-- **Profile isolation** - Option to use separate Firefox profile
+- **No profile copying** - LUMO-Term launches directly against your real profile rather than extracting or duplicating cookies/session data
 
 ## Limitations
 
-- Requires Firefox with an active LUMO+ session
+- Requires a supported browser (Firefox/Chrome/Edge/Chromium) with an active LUMO+ session
+- **The target browser must be fully closed** before running `lumo` — it launches its own instance directly against your real profile, which the browser won't allow while it's already open
 - Browser automation adds some overhead vs native API
 - Rate limits apply as per Proton's terms of service
 - Web Search toggle must be enabled manually in LUMO UI for internet queries

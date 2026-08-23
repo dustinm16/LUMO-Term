@@ -13,7 +13,8 @@ from textual.containers import Container, Vertical, VerticalScroll
 from textual.widgets import Footer, Header, Input, Static, LoadingIndicator
 from textual.message import Message
 
-from .browser import LumoBrowser, create_lumo_client
+from .browsers import create_lumo_client
+from .browsers.base import BaseLumoBrowser
 
 
 class ChatMessage(Static):
@@ -176,14 +177,16 @@ class LumoApp(App):
 
     def __init__(
         self,
-        firefox_profile: Optional[Path] = None,
+        browser: Optional[str] = None,
+        profile: Optional[Path] = None,
         headless: bool = True,
         **kwargs
     ):
         super().__init__(**kwargs)
-        self.firefox_profile = firefox_profile
+        self.browser = browser
+        self.profile = profile
         self.headless = headless
-        self._client: Optional[LumoBrowser] = None
+        self._client: Optional[BaseLumoBrowser] = None
         self._is_generating = False
 
     def compose(self) -> ComposeResult:
@@ -205,7 +208,8 @@ class LumoApp(App):
 
         try:
             self._client = await create_lumo_client(
-                firefox_profile=self.firefox_profile,
+                browser=self.browser,
+                profile=self.profile,
                 headless=self.headless,
             )
             status.update("Connected to LUMO+")
@@ -308,18 +312,20 @@ class LumoApp(App):
 
 
 async def run_tui(
-    firefox_profile: Optional[Path] = None,
+    browser: Optional[str] = None,
+    profile: Optional[Path] = None,
     headless: bool = True,
 ) -> int:
     """Run the TUI application.
 
     Args:
-        firefox_profile: Path to Firefox profile.
+        browser: Browser backend to automate (auto-detected if None).
+        profile: Path to the browser profile.
         headless: Run browser in headless mode.
 
     Returns:
         Exit code.
     """
-    app = LumoApp(firefox_profile=firefox_profile, headless=headless)
+    app = LumoApp(browser=browser, profile=profile, headless=headless)
     await app.run_async()
     return 0

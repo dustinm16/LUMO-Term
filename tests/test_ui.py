@@ -18,6 +18,24 @@ from lumo_term.ui import (
 )
 
 
+@pytest.fixture(autouse=True)
+def no_real_browser_launch():
+    """Prevent LumoApp.on_mount's background initialize_client() from ever
+    launching a real browser during these UI unit tests.
+
+    LumoApp always kicks off `create_lumo_client(...)` as a background
+    worker on mount, regardless of what the test actually cares about. On a
+    machine with real installed browsers, an unmocked call attempts an
+    actual Selenium launch, taking anywhere from several seconds to a
+    minute+ per test.
+    """
+    with patch(
+        "lumo_term.ui.create_lumo_client",
+        AsyncMock(side_effect=RuntimeError("no browser in tests")),
+    ):
+        yield
+
+
 # ============================================================================
 # ChatMessage Tests
 # ============================================================================
@@ -212,17 +230,18 @@ class TestLumoApp:
         """App should initialize with default values."""
         app = LumoApp()
 
-        assert app.firefox_profile is None
+        assert app.browser is None
+        assert app.profile is None
         assert app.headless is True
         assert app._client is None
         assert app._is_generating is False
 
     def test_app_initialization_custom_profile(self):
-        """App should accept custom Firefox profile."""
+        """App should accept a custom browser profile."""
         profile = Path("/custom/profile")
-        app = LumoApp(firefox_profile=profile)
+        app = LumoApp(profile=profile)
 
-        assert app.firefox_profile == profile
+        assert app.profile == profile
 
     def test_app_initialization_headless_false(self):
         """App should accept headless=False."""
@@ -454,7 +473,8 @@ class TestRunTui:
         sig = inspect.signature(run_tui)
         params = list(sig.parameters.keys())
 
-        assert "firefox_profile" in params
+        assert "browser" in params
+        assert "profile" in params
         assert "headless" in params
 
     @pytest.mark.asyncio
@@ -463,11 +483,11 @@ class TestRunTui:
         # We can't fully test run_tui as it blocks, but we can test
         # that LumoApp can be instantiated with the same parameters
         app = LumoApp(
-            firefox_profile=Path("/test"),
+            profile=Path("/test"),
             headless=False
         )
 
-        assert app.firefox_profile == Path("/test")
+        assert app.profile == Path("/test")
         assert app.headless is False
 
 

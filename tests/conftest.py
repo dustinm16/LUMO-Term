@@ -6,7 +6,8 @@ import time
 from pathlib import Path
 from typing import AsyncGenerator
 
-from lumo_term.browser import LumoBrowser
+from lumo_term.browsers import create_browser_client
+from lumo_term.browsers.base import BaseLumoBrowser
 from lumo_term.config import load_config
 
 
@@ -42,22 +43,31 @@ def event_loop():
 
 
 @pytest.fixture(scope="session")
-def firefox_profile() -> Path | None:
-    """Get Firefox profile path from config or auto-detect."""
+def browser_name() -> str | None:
+    """Get the browser backend to test against, from config or auto-detect."""
     config = load_config()
-    if config.firefox_profile:
-        return Path(config.firefox_profile)
+    return config.browser
+
+
+@pytest.fixture(scope="session")
+def browser_profile() -> Path | None:
+    """Get browser profile path override from config, if any."""
+    config = load_config()
+    if config.browser_profile:
+        return Path(config.browser_profile)
     return None
 
 
 @pytest.fixture
-async def browser(firefox_profile: Path | None) -> AsyncGenerator[LumoBrowser, None]:
+async def browser(
+    browser_name: str | None, browser_profile: Path | None
+) -> AsyncGenerator[BaseLumoBrowser, None]:
     """Create a fresh browser instance for each test.
 
     This fixture creates a new browser session, yields it for testing,
     and ensures cleanup after the test completes.
     """
-    client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
+    client = create_browser_client(browser=browser_name, profile=browser_profile, headless=True)
 
     startup_logs = []
     def log_progress(msg: str):
@@ -76,13 +86,15 @@ async def browser(firefox_profile: Path | None) -> AsyncGenerator[LumoBrowser, N
 
 
 @pytest.fixture
-async def persistent_browser(firefox_profile: Path | None) -> AsyncGenerator[LumoBrowser, None]:
+async def persistent_browser(
+    browser_name: str | None, browser_profile: Path | None
+) -> AsyncGenerator[BaseLumoBrowser, None]:
     """Create a browser instance that persists across multiple tests in a class.
 
     Use this for conversation persistence tests where we need to maintain
     state across multiple messages.
     """
-    client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
+    client = create_browser_client(browser=browser_name, profile=browser_profile, headless=True)
 
     await asyncio.wait_for(
         client.start(),

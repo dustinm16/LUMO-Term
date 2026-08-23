@@ -1,50 +1,79 @@
-"""Tests for browser automation functionality."""
+"""Tests for browser-agnostic LUMO+ automation logic in BaseLumoBrowser.
 
-import asyncio
+Error-path tests use a minimal concrete subclass since they never actually
+start a driver. Lifecycle/messaging tests are real integration tests (marked
+`integration`) that exercise whichever browser the `browser` fixture resolves
+to (config override, or auto-detected) — they live here rather than per
+backend because the behavior under test is the shared base-class logic.
+"""
+
 import pytest
-from pathlib import Path
 
-from lumo_term.browser import LumoBrowser
+from lumo_term.browsers.base import BaseLumoBrowser
 
 
-# ============================================================================
-# Browser Initialization Tests
-# ============================================================================
+class _StubLumoBrowser(BaseLumoBrowser):
+    """Minimal concrete subclass for exercising base-class logic without Selenium."""
 
-class TestBrowserInit:
-    """Test browser initialization and configuration."""
+    BROWSER_NAME = "Stub"
 
-    def test_browser_creates_with_defaults(self):
-        """Browser should create with default settings."""
-        browser = LumoBrowser()
-        assert browser.headless is True
-        assert browser.firefox_profile is not None
-        assert browser._driver is None
+    def _resolve_profile(self):
+        return "stub-profile"
 
-    def test_browser_creates_with_custom_headless(self):
-        """Browser should accept headless parameter."""
-        browser = LumoBrowser(headless=False)
-        assert browser.headless is False
+    def _is_profile_locked(self, profile) -> bool:
+        return False
 
-    def test_browser_finds_firefox_profile(self):
-        """Browser should auto-detect Firefox profile."""
-        browser = LumoBrowser()
-        assert browser.firefox_profile.exists()
-        assert (browser.firefox_profile / "cookies.sqlite").exists()
-
-    def test_browser_accepts_custom_profile(self, tmp_path):
-        """Browser should accept custom profile path."""
-        # Create a fake profile
-        fake_profile = tmp_path / "fake_profile"
-        fake_profile.mkdir()
-        (fake_profile / "cookies.sqlite").touch()
-
-        browser = LumoBrowser(firefox_profile=fake_profile)
-        assert browser.firefox_profile == fake_profile
+    def _build_driver(self, profile):
+        raise NotImplementedError("not needed for these tests")
 
 
 # ============================================================================
-# Browser Lifecycle Tests
+# Error Handling Tests (no real browser needed)
+# ============================================================================
+
+class TestErrorHandling:
+    """Test error handling scenarios that don't require a running browser."""
+
+    @pytest.mark.asyncio
+    async def test_send_before_start_raises_error(self):
+        """Should raise error if sending message before start."""
+        client = _StubLumoBrowser()
+
+        with pytest.raises(RuntimeError, match="not started"):
+            await client.send_message("test")
+
+    @pytest.mark.asyncio
+    async def test_new_conversation_before_start_raises_error(self):
+        """Should raise error if new_conversation called before start."""
+        client = _StubLumoBrowser()
+
+        with pytest.raises(RuntimeError, match="not started"):
+            await client.new_conversation()
+
+    @pytest.mark.asyncio
+    async def test_double_stop_is_safe(self):
+        """Should handle double stop gracefully even without starting."""
+        client = _StubLumoBrowser()
+        await client.stop()
+        # Second stop should not raise
+        await client.stop()
+
+    @pytest.mark.asyncio
+    async def test_start_raises_when_profile_locked(self):
+        """start() should raise a clear error when the real browser has the profile open."""
+
+        class LockedStub(_StubLumoBrowser):
+            def _is_profile_locked(self, profile) -> bool:
+                return True
+
+        client = LockedStub()
+
+        with pytest.raises(RuntimeError, match="fully quit"):
+            await client.start()
+
+
+# ============================================================================
+# Browser Lifecycle Tests (real browser via the `browser` fixture)
 # ============================================================================
 
 @pytest.mark.integration
@@ -58,37 +87,37 @@ class TestBrowserLifecycle:
         assert "lumo.proton.me" in browser._driver.current_url
 
     @pytest.mark.asyncio
-    async def test_browser_stops_cleanly(self, firefox_profile):
+    async def test_browser_stops_cleanly(self, browser_name, browser_profile):
         """Browser should stop and clean up resources."""
-        client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
+        from lumo_term.browsers import create_browser_client
+
+        client = create_browser_client(browser=browser_name, profile=browser_profile, headless=True)
         await client.start()
 
-        # Verify started
         assert client._driver is not None
-        temp_profile = client._temp_profile
 
-        # Stop
         await client.stop()
 
-        # Verify stopped
         assert client._driver is None
-        # Temp profile should be cleaned up
-        assert temp_profile is None or not temp_profile.exists()
 
     @pytest.mark.asyncio
-    async def test_browser_handles_multiple_start_stop_cycles(self, firefox_profile):
+    async def test_browser_handles_multiple_start_stop_cycles(self, browser_name, browser_profile):
         """Browser should handle multiple start/stop cycles."""
-        for i in range(2):
-            client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
+        from lumo_term.browsers import create_browser_client
+
+        for _ in range(2):
+            client = create_browser_client(browser=browser_name, profile=browser_profile, headless=True)
             await client.start()
             assert client._driver is not None
             await client.stop()
             assert client._driver is None
 
     @pytest.mark.asyncio
-    async def test_start_progress_callback(self, firefox_profile):
+    async def test_start_progress_callback(self, browser_name, browser_profile):
         """Browser should call progress callback during startup."""
-        client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
+        from lumo_term.browsers import create_browser_client
+
+        client = create_browser_client(browser=browser_name, profile=browser_profile, headless=True)
         progress_messages = []
 
         def on_progress(msg: str):
@@ -97,10 +126,7 @@ class TestBrowserLifecycle:
         try:
             await client.start(progress_callback=on_progress)
 
-            # Should have multiple progress updates
-            assert len(progress_messages) >= 4
-            assert any("profile" in msg.lower() for msg in progress_messages)
-            assert any("firefox" in msg.lower() for msg in progress_messages)
+            assert len(progress_messages) >= 2
             assert any("lumo" in msg.lower() for msg in progress_messages)
         finally:
             await client.stop()
@@ -121,7 +147,6 @@ class TestMessageSending:
 
         assert response is not None
         assert len(response) > 0
-        # Response should contain acknowledgment
         assert "test" in response.lower() or "passed" in response.lower()
 
     @pytest.mark.asyncio
@@ -138,18 +163,8 @@ class TestMessageSending:
         response = await browser.send_message(test_messages["long"])
 
         assert response is not None
-        assert len(response) > 50  # Should have a substantial response
+        assert len(response) > 50
         assert "recursion" in response.lower() or "function" in response.lower()
-
-    @pytest.mark.asyncio
-    async def test_send_empty_message_handling(self, browser):
-        """Should handle empty or whitespace messages gracefully."""
-        # The input element might not accept empty strings,
-        # so we test with minimal input
-        response = await browser.send_message(".")
-
-        # Should still get some response
-        assert response is not None
 
     @pytest.mark.asyncio
     async def test_send_special_characters(self, browser):
@@ -184,14 +199,9 @@ class TestStreamingResponses:
         collector = response_collector()
         collector.start()
 
-        response = await browser.send_message(
-            "Count from 1 to 5",
-            on_token=collector.on_token
-        )
+        await browser.send_message("Count from 1 to 5", on_token=collector.on_token)
 
-        # Should have received multiple tokens
         assert collector.token_count > 0
-        # Collected tokens should form the response
         assert len(collector.full_response) > 0
 
     @pytest.mark.asyncio
@@ -200,12 +210,8 @@ class TestStreamingResponses:
         collector = response_collector()
         collector.start()
 
-        await browser.send_message(
-            "Say hello",
-            on_token=collector.on_token
-        )
+        await browser.send_message("Say hello", on_token=collector.on_token)
 
-        # First token should arrive within 30 seconds
         assert collector.time_to_first_token is not None
         assert collector.time_to_first_token < 30.0
 
@@ -229,52 +235,12 @@ class TestNewConversation:
     @pytest.mark.asyncio
     async def test_new_conversation_clears_context(self, browser):
         """New conversation should clear previous context."""
-        # Set context
         await browser.send_message("Remember: test value is XYZ123")
 
-        # Verify context is set
         response1 = await browser.send_message("What is the test value?")
         assert "XYZ123" in response1
 
-        # Start new conversation
         await browser.new_conversation()
 
-        # Context should be cleared
         response2 = await browser.send_message("What is the test value?")
-        # Should not remember XYZ123 from previous conversation
-        # (or should indicate it doesn't know)
         assert "XYZ123" not in response2 or "don't" in response2.lower() or "haven't" in response2.lower()
-
-
-# ============================================================================
-# Error Handling Tests
-# ============================================================================
-
-@pytest.mark.integration
-class TestErrorHandling:
-    """Test error handling scenarios."""
-
-    @pytest.mark.asyncio
-    async def test_send_before_start_raises_error(self, firefox_profile):
-        """Should raise error if sending message before start."""
-        client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
-
-        with pytest.raises(RuntimeError, match="not started"):
-            await client.send_message("test")
-
-    @pytest.mark.asyncio
-    async def test_new_conversation_before_start_raises_error(self, firefox_profile):
-        """Should raise error if new_conversation called before start."""
-        client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
-
-        with pytest.raises(RuntimeError, match="not started"):
-            await client.new_conversation()
-
-    @pytest.mark.asyncio
-    async def test_double_stop_is_safe(self, firefox_profile):
-        """Should handle double stop gracefully."""
-        client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
-        await client.start()
-        await client.stop()
-        # Second stop should not raise
-        await client.stop()

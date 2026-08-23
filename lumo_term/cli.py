@@ -11,7 +11,8 @@ from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.prompt import Prompt
 
-from .browser import LumoBrowser
+from .browsers import BROWSER_CHOICES, create_browser_client
+from .browsers.base import BaseLumoBrowser
 from .config import load_config
 from .extract import (
     extract_code_blocks,
@@ -47,9 +48,14 @@ def parse_args() -> argparse.Namespace:
         help="Show browser window (useful for debugging)",
     )
     parser.add_argument(
+        "--browser",
+        choices=BROWSER_CHOICES,
+        help="Browser to automate (auto-detected if not specified)",
+    )
+    parser.add_argument(
         "--profile",
         type=Path,
-        help="Firefox profile path (auto-detected if not specified)",
+        help="Browser profile path (auto-detected if not specified)",
     )
     parser.add_argument(
         "--new",
@@ -237,7 +243,7 @@ def build_message(args: argparse.Namespace) -> str | None:
     return "\n\n".join(parts)
 
 
-async def run_repl(client: LumoBrowser, args: argparse.Namespace) -> None:
+async def run_repl(client: BaseLumoBrowser, args: argparse.Namespace) -> None:
     """Run interactive REPL mode."""
     global _last_message, _last_response
 
@@ -399,7 +405,7 @@ async def run_repl(client: LumoBrowser, args: argparse.Namespace) -> None:
             console.print(f"[red]Error: {e}[/red]")
 
 
-async def run_single_message(client: LumoBrowser, message: str, args: argparse.Namespace) -> str:
+async def run_single_message(client: BaseLumoBrowser, message: str, args: argparse.Namespace) -> str:
     """Send a single message and return the response."""
     response = await client.send_message(message)
 
@@ -454,7 +460,8 @@ async def async_main() -> int:
     if args.tui:
         from .ui import run_tui
         return await run_tui(
-            firefox_profile=args.profile,
+            browser=args.browser or config.browser,
+            profile=args.profile or (Path(config.browser_profile) if config.browser_profile else None),
             headless=not args.no_headless,
         )
 
@@ -472,8 +479,9 @@ async def async_main() -> int:
         console.print(f"[dim]  {msg}[/dim]")
 
     try:
-        client = LumoBrowser(
-            firefox_profile=args.profile or (Path(config.firefox_profile) if config.firefox_profile else None),
+        client = create_browser_client(
+            browser=args.browser or config.browser,
+            profile=args.profile or (Path(config.browser_profile) if config.browser_profile else None),
             headless=not args.no_headless,
         )
         await client.start(progress_callback=on_progress)

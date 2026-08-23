@@ -3,7 +3,7 @@
 import asyncio
 import pytest
 
-from lumo_term.browser import LumoBrowser
+from lumo_term.browsers import create_browser_client
 
 
 # ============================================================================
@@ -93,16 +93,16 @@ class TestContextIsolation:
     """Test context isolation between sessions."""
 
     @pytest.mark.asyncio
-    async def test_new_browser_has_fresh_context(self, firefox_profile):
+    async def test_new_browser_has_fresh_context(self, browser_name, browser_profile):
         """Each new browser session should start fresh."""
         # First session - set context
-        client1 = LumoBrowser(firefox_profile=firefox_profile, headless=True)
+        client1 = create_browser_client(browser=browser_name, profile=browser_profile, headless=True)
         await client1.start()
         await client1.send_message("Secret code: ALPHA1")
         await client1.stop()
 
         # Second session - should not have context
-        client2 = LumoBrowser(firefox_profile=firefox_profile, headless=True)
+        client2 = create_browser_client(browser=browser_name, profile=browser_profile, headless=True)
         await client2.start()
         response = await client2.send_message("What is the secret code?")
         await client2.stop()

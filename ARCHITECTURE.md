@@ -9,15 +9,16 @@ This document explains the technical architecture of LUMO-Term.
 │                        LUMO-Term                            │
 ├─────────────────────────────────────────────────────────────┤
 │  ┌─────────┐    ┌─────────┐    ┌─────────────────────────┐  │
-│  │  CLI    │    │   TUI   │    │      Browser Module     │  │
-│  │ (cli.py)│    │ (ui.py) │    │      (browser.py)       │  │
+│  │  CLI    │    │   TUI   │    │   browsers/ package      │  │
+│  │ (cli.py)│    │ (ui.py) │    │  (factory + backends)   │  │
 │  └────┬────┘    └────┬────┘    └────────────┬────────────┘  │
 │       │              │                      │               │
 │       └──────────────┴──────────────────────┘               │
 │                          │                                  │
 │              ┌───────────▼───────────┐                      │
-│              │   Selenium + Firefox  │                      │
-│              │   (Native Headless)   │                      │
+│              │  Selenium + Firefox / │                      │
+│              │  Chrome / Edge /      │                      │
+│              │  Chromium (headless)  │                      │
 │              └───────────┬───────────┘                      │
 └──────────────────────────┼──────────────────────────────────┘
                            │
@@ -71,40 +72,72 @@ Browser automation is the only viable approach for programmatic access.
 
 Instead of reverse-engineering Proton's encryption:
 
-1. We use **Selenium** to control Firefox
-2. Firefox runs in **native headless mode** - invisible to the user
-3. Firefox loads LUMO's **web app with all crypto**
+1. We use **Selenium** to control the user's real, already-authenticated browser (Firefox, Chrome, Edge, or Chromium)
+2. The browser runs in **native headless mode** - invisible to the user
+3. The browser loads LUMO's **web app with all crypto**
 4. We interact via **DOM manipulation**
 5. The browser handles **all encryption/decryption**
 
 This approach:
 - Works without understanding the crypto protocol
 - Stays compatible with LUMO updates
-- Keeps credentials secure in Firefox's storage
-- Runs invisibly via Firefox's native headless mode
+- Keeps credentials secure in the browser's own storage — nothing is copied out
+- Runs invisibly via the browser's native headless mode
+
+### Direct Profile Launch (not a profile copy)
+
+LUMO-Term launches each backend **directly against the browser's real profile
+directory** rather than copying cookies/storage into a scratch profile. An
+earlier version of this tool copied a curated subset of Firefox's profile files,
+which was fragile (easy to miss a file the storage/quota manager needed) and
+would have been substantially harder for Chromium, whose cookie values are
+encrypted using an OS-keychain-derived key rather than being plainly readable
+from disk.
+
+This has one hard consequence: **the target browser must be fully closed**
+before `start()` runs — both Firefox and Chromium refuse a second process
+against a profile that's already open (`.parentlock` / `SingletonLock`).
+`browsers/profiles.py` checks this before launching and raises a clear error
+rather than letting Selenium fail obscurely; both checks verify the lock is
+actually held by a *live* process rather than trusting file existence alone,
+since a crashed prior attempt leaves the same lock file behind without
+releasing it.
+
+Chromium-family browsers add one more wrinkle: they hard-refuse to open a
+remote-debugging **port** against what they recognize as a default profile
+directory ("DevTools remote debugging requires a non-default data directory") —
+a deliberate anti-automation guard. `browsers/chromium.py` works around this
+the sanctioned way, via `--remote-debugging-pipe` instead of a TCP port, which
+isn't subject to that check.
 
 ## Module Structure
 
 ```
 lumo_term/
-├── __init__.py      # Package metadata
-├── __main__.py      # Entry point for `python -m lumo_term`
-├── cli.py           # Command-line interface & REPL
-├── ui.py            # Textual TUI application
-├── browser.py       # Selenium browser automation
-├── extract.py       # Code extraction & response parsing
-├── auth.py          # Firefox cookie extraction (for future use)
-└── config.py        # Configuration management
+├── __init__.py         # Package metadata
+├── __main__.py         # Entry point for `python -m lumo_term`
+├── cli.py              # Command-line interface & REPL
+├── ui.py               # Textual TUI application
+├── extract.py          # Code extraction & response parsing
+├── config.py           # Configuration management
+└── browsers/
+    ├── __init__.py      # create_browser_client() factory + auto-detection
+    ├── base.py          # BaseLumoBrowser: driver-agnostic Selenium logic
+    ├── firefox.py        # FirefoxLumoBrowser backend
+    ├── chromium.py        # ChromeLumoBrowser / EdgeLumoBrowser / ChromiumLumoBrowser
+    └── profiles.py        # OS-aware profile discovery, lock detection, browser detection
 ```
 
-### browser.py - Core Engine
+### browsers/ - Core Engine
 
-The `LumoBrowser` class manages Firefox via Selenium in headless mode:
+`BaseLumoBrowser` (in `base.py`) holds everything that's actually driver-agnostic —
+the same Selenium `By.CSS_SELECTOR` calls work identically regardless of which
+browser is under the hood:
 
 ```python
-class LumoBrowser:
+class BaseLumoBrowser(ABC):
     async def start(self, progress_callback=None):
-        """Launch Firefox in headless mode with user's profile"""
+        """Resolve + lock-check the profile, then launch (backend-specific)"""
 
     async def send_message(self, message, on_token=None):
         """Send message and stream response"""
@@ -114,13 +147,25 @@ class LumoBrowser:
 
     async def stop(self):
         """Close browser and clean up"""
+
+    # Implemented per backend:
+    def _resolve_profile(self): ...
+    def _is_profile_locked(self, profile): ...
+    def _build_driver(self, profile): ...
 ```
+
+Each concrete backend (`FirefoxLumoBrowser`, `ChromeLumoBrowser`,
+`EdgeLumoBrowser`, `ChromiumLumoBrowser`) only implements those three hooks;
+`create_browser_client()` in `browsers/__init__.py` picks the right one from an
+explicit `--browser` flag/config value, or auto-detects by checking which
+supported browser is installed (`browsers/profiles.py`), in priority order
+firefox → chrome → edge → chromium.
 
 Key implementation details:
 
-1. **Native Headless**: Uses Firefox's built-in `-headless` flag for invisible operation
-2. **Profile Copying**: Copies essential Firefox profile files (cookies, Proton storage) to temp directory
-3. **GeckoDriver**: Uses webdriver-manager to auto-download appropriate geckodriver
+1. **Native Headless**: Uses each browser's built-in headless flag for invisible operation
+2. **No Profile Copying**: Launches directly against the real profile directory (see above)
+3. **Driver Resolution**: Prefers a cached driver binary or one on PATH; otherwise lets Selenium's built-in Selenium Manager (4.6+) resolve and download a version-matched driver — this is more reliable across network environments than `webdriver-manager` (previously used), particularly for Edge, whose driver-download host isn't always reachable everywhere Selenium Manager's own endpoint is
 4. **DOM Polling**: Monitors response elements for streaming text updates
 
 ### cli.py - REPL Interface
@@ -128,7 +173,7 @@ Key implementation details:
 Provides the interactive command-line experience:
 
 ```python
-async def run_repl(client: LumoBrowser):
+async def run_repl(client: BaseLumoBrowser):
     while True:
         user_input = Prompt.ask("You")
         response = await client.send_message(user_input, on_token=on_token)
@@ -153,20 +198,6 @@ Components:
 - `ChatArea` - Scrollable message history
 - `StreamingMessage` - Live-updating response display
 - `ChatInput` - Input field with command handling
-
-### auth.py - Cookie Extraction
-
-Extracts authentication cookies from Firefox for potential future use:
-
-```python
-def get_auth_session(force_refresh=False):
-    """Extract Proton cookies from Firefox profile"""
-```
-
-Currently used for:
-- Detecting available Firefox profiles
-- Validating user is logged in
-- Future: Direct API access if encryption is solved
 
 ### extract.py - Code Extraction
 
@@ -205,21 +236,20 @@ The module uses language-specific patterns to detect code:
 
 ### config.py - Configuration
 
-Manages user preferences and session state:
+Manages user preferences:
 
 ```python
 class Config(BaseModel):
-    firefox_profile: str | None = None
+    browser: str | None = None          # "firefox" | "chrome" | "edge" | "chromium"
+    browser_profile: str | None = None  # override profile auto-detection
     theme: str = "dark"
-
-class Session(BaseModel):
-    uid: str | None = None
-    cookies: dict[str, str] = {}
 ```
 
-Storage locations:
-- `~/.config/lumo-term/config.json`
-- `~/.config/lumo-term/session.json`
+Storage location: `~/.config/lumo-term/config.json`
+
+There's no separate session cache — since backends launch directly against the
+real browser profile, the browser itself is the source of truth for
+authentication state; there's nothing for LUMO-Term to extract or cache.
 
 ## Data Flow
 
@@ -229,13 +259,13 @@ Storage locations:
 1. User types message in CLI/TUI
            │
            ▼
-2. cli.py/ui.py calls browser.send_message()
+2. cli.py/ui.py calls client.send_message() (BaseLumoBrowser)
            │
            ▼
-3. browser.py fills input field via Selenium WebDriver
+3. base.py fills input field via Selenium WebDriver
            │
            ▼
-4. browser.py clicks send / presses Enter
+4. base.py clicks send / presses Enter
            │
            ▼
 5. LUMO web app encrypts message (in headless browser)
@@ -250,7 +280,7 @@ Storage locations:
 8. LUMO web app decrypts tokens (in headless browser)
            │
            ▼
-9. browser.py captures decrypted text via DOM polling
+9. base.py captures decrypted text via DOM polling
            │
            ▼
 10. Text streamed to CLI/TUI via on_token callback
@@ -284,20 +314,20 @@ Python detects response completion by:
 
 ### Credential Handling
 
-- Credentials **never leave Firefox's profile**
+- Credentials **never leave the browser's own profile** — no copying, no cookie extraction
 - No passwords or tokens stored by LUMO-Term
-- Session state uses Firefox's secure storage
+- Session state uses the browser's own secure storage
 
 ### Profile Isolation
 
-The `--profile` option allows using a separate Firefox profile:
+The `--profile` option allows using a separate profile:
 
 ```bash
-# Create dedicated profile
+# Create a dedicated Firefox profile
 firefox -CreateProfile lumo-dedicated
 
 # Use it with LUMO-Term
-lumo --profile ~/.mozilla/firefox/xyz.lumo-dedicated
+lumo --browser firefox --profile ~/.mozilla/firefox/xyz.lumo-dedicated
 ```
 
 ### Data Privacy
@@ -336,10 +366,12 @@ lumo --profile ~/.mozilla/firefox/xyz.lumo-dedicated
 
 ### Known Limitations
 
-1. **Browser Dependency**: Requires Firefox to be installed
-2. **DOM Selectors**: May break if LUMO updates its UI structure
-3. **No Offline Mode**: Requires active internet connection
-4. **Single Session**: One conversation at a time
+1. **Browser Dependency**: Requires Firefox, Chrome, Edge, or Chromium to be installed
+2. **Browser Must Be Closed**: The target browser can't be running when `lumo` starts (direct-profile launch)
+3. **DOM Selectors**: May break if LUMO updates its UI structure
+4. **No Offline Mode**: Requires active internet connection
+5. **Single Session**: One conversation at a time
+6. **macOS/Windows Profile Paths**: Implemented from documented OS conventions but primarily tested on Linux
 
 ## Contributing
 

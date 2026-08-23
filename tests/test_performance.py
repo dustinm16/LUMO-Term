@@ -7,7 +7,7 @@ import statistics
 from dataclasses import dataclass, field
 from typing import List
 
-from lumo_term.browser import LumoBrowser
+from lumo_term.browsers import create_browser_client
 
 
 # ============================================================================
@@ -86,9 +86,9 @@ class TestStartupPerformance:
     """Benchmark browser startup performance."""
 
     @pytest.mark.asyncio
-    async def test_startup_time(self, firefox_profile):
+    async def test_startup_time(self, browser_name, browser_profile):
         """Measure browser startup time."""
-        client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
+        client = create_browser_client(browser=browser_name, profile=browser_profile, headless=True)
         metrics = PerformanceMetrics()
 
         start = time.perf_counter()
@@ -102,9 +102,9 @@ class TestStartupPerformance:
             f"Startup too slow: {metrics.startup_time:.2f}s > {THRESHOLDS['total_startup']}s"
 
     @pytest.mark.asyncio
-    async def test_startup_phases(self, firefox_profile):
+    async def test_startup_phases(self, browser_name, browser_profile):
         """Measure individual startup phases."""
-        client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
+        client = create_browser_client(browser=browser_name, profile=browser_profile, headless=True)
         phase_times = {}
 
         def track_phase(msg: str):
@@ -209,55 +209,7 @@ class TestThroughputPerformance:
         print(f"Total time for {len(messages)} messages: {total_time:.2f}s")
 
 
-# ============================================================================
-# Memory and Resource Tests
-# ============================================================================
-
-@pytest.mark.integration
-@pytest.mark.slow
-class TestResourceUsage:
-    """Test resource usage patterns."""
-
-    @pytest.mark.asyncio
-    async def test_profile_cleanup(self, firefox_profile):
-        """Verify temp profiles are cleaned up."""
-        import os
-        from pathlib import Path
-
-        cache_dir = Path.home() / ".cache" / "lumo-term"
-
-        # Count profiles before
-        profiles_before = len(list(cache_dir.glob("profile-*"))) if cache_dir.exists() else 0
-
-        # Run a session
-        client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
-        await client.start()
-        await client.send_message("Test")
-        await client.stop()
-
-        # Count profiles after
-        profiles_after = len(list(cache_dir.glob("profile-*"))) if cache_dir.exists() else 0
-
-        # Should have cleaned up
-        print(f"\nProfiles before: {profiles_before}, after: {profiles_after}")
-        assert profiles_after <= profiles_before, "Temp profile not cleaned up"
-
-    @pytest.mark.asyncio
-    async def test_multiple_sessions_cleanup(self, firefox_profile):
-        """Verify cleanup across multiple sessions."""
-        from pathlib import Path
-
-        cache_dir = Path.home() / ".cache" / "lumo-term"
-        initial_count = len(list(cache_dir.glob("profile-*"))) if cache_dir.exists() else 0
-
-        # Run multiple sessions
-        for i in range(3):
-            client = LumoBrowser(firefox_profile=firefox_profile, headless=True)
-            await client.start()
-            await client.send_message(f"Session {i}")
-            await client.stop()
-
-        final_count = len(list(cache_dir.glob("profile-*"))) if cache_dir.exists() else 0
-
-        print(f"\nInitial profiles: {initial_count}, final: {final_count}")
-        assert final_count <= initial_count + 1, "Profile leak detected"
+# Note: the old copy-profile temp-directory cleanup tests
+# (test_profile_cleanup / test_multiple_sessions_cleanup) were removed along
+# with LumoBrowser._copy_profile. Backends now launch directly against the
+# real browser profile, so there's no scratch directory to leak or clean up.
